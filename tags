@@ -1,0 +1,27 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.9~svn20110310	//
+coefficient_matrix	tools.py	/^def coefficient_matrix(vdf_3d_flat,mm,herm_array,v_xyz):$/;"	f
+extract_vdf	tools.py	/^def extract_vdf(file,cid,box=-1):$/;"	f
+gaussian_3d	tools.py	/^def gaussian_3d(xyz, A, x0, y0, z0, sigma_x, sigma_y, sigma_z):$/;"	f
+get_flat_mesh	tools.py	/^def get_flat_mesh(v_min,v_max,n_bins):$/;"	f
+get_moments	tools.py	/^    def get_moments(vdf):$/;"	f	function:print_comparison_stats
+get_v_ax	tools.py	/^def get_v_ax(v_min,v_max,n_bins):$/;"	f
+herm_mpl_arr	tools.py	/^def herm_mpl_arr(m_pol,v_ax,u,vth):$/;"	f
+herm_phys	tools.py	/^def herm_phys(v,m):$/;"	f
+herm_phys_spec	tools.py	/^def herm_phys_spec(v,u,vth,m):$/;"	f
+inv_herm_trans	tools.py	/^def inv_herm_trans(mm_matrix,herm_array, v_xyz):$/;"	f
+main	vdfPLots.py	/^def main():$/;"	f
+max_fit	tools.py	/^def max_fit(vdf_3d,v_min,v_max,n_bins,guess):$/;"	f
+multivariate_normal	tools.py	/^def multivariate_normal(x, mean, covariance_matrix):    $/;"	f
+multivariate_normal	tools.py	/^def multivariate_normal(x, mean, covariance_matrix):$/;"	f
+plot_vdfs	tools.py	/^def plot_vdfs(a,b):$/;"	f
+print_comparison_stats	tools.py	/^def print_comparison_stats(a,b):$/;"	f
+reconstruct_vdf	tools.py	/^def reconstruct_vdf(n_pop,means,covs,weights,n_bins,v_min,v_max):$/;"	f
+relative_norms	tools.py	/^    def relative_norms(a, b):$/;"	f	function:print_comparison_stats
+run_gmm	tools.py	/^def run_gmm(vdf_3d,n_pop,norm_range):$/;"	f
+scale_vdf	tools.py	/^def scale_vdf(vdf):$/;"	f
+unscale_vdf	tools.py	/^def unscale_vdf(vdf):$/;"	f

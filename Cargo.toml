@@ -1,0 +1,17 @@
+[package]
+name = "mlp_compress"
+version = "0.1.0"
+edition = "2021"
+author = ["Kostis Papadakis <kpapadakis@protonmail.com>"]
+
+[dependencies]
+conv = "0.3.3"
+image = "0.25.0"
+nalgebra = "0.32.4"
+num-traits = "0.2.18"
+pyo3 = { version = "0.21.1", features = ["extension-module"] }
+rand = "0.8.5"
+
+[lib]
+name="mlp_compress"
+crate-type = ["cdylib"]
