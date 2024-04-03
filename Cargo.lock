@@ -514,6 +514,7 @@ dependencies = [
  "num-traits",
  "pyo3",
  "rand",
+ "rayon",
 ]
 
 [[package]]

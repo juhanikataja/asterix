@@ -87,11 +87,12 @@ fn reconstruct_vdf(net: &mut Network<f64>, vspace: &DMatrix<f64>) -> Vec<f64> {
     let mut sample = DMatrix::<f64>::zeros(1, vspace.ncols());
     let mut buffer = DMatrix::<f64>::zeros(1, 1);
     let mut reconstructed_vdf: Vec<f64> = vec![];
+    let mut decoder = Network::<f64>::new_from_other_with_batchsize(&net, 1);
     for s in 0..vspace.nrows() {
         for i in 0..vspace.ncols() {
             sample[(0, i)] = vspace[(s, i)];
         }
-        net.eval(&sample, &mut buffer);
+        decoder.eval(&sample, &mut buffer);
         reconstructed_vdf.push(buffer[(0, 0)]);
     }
     reconstructed_vdf
@@ -112,11 +113,12 @@ fn compress_vdf(
         n_neurons,
         &vspace,
         &density,
+        8,
     );
     //Train
     let before = Instant::now();
     for epoch in 0..epochs {
-        let cost = net.train_batch(1e-3.into(), epoch, 8);
+        let cost = net.train_minibatch(1e-3.into(), epoch, 1);
         if epoch % 1 == 0 {
             println!("Cost at epoch {} is {:.4}", epoch, cost);
         }
