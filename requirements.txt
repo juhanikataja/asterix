@@ -3,4 +3,6 @@ numba==0.58.1
 numpy==1.24.3
 scikit_learn==1.2.2
 scipy==1.12.0
+pyzfp
 maturin
+torch
