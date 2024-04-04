@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from sklearn.mixture import GaussianMixture
 from scipy.optimize import curve_fit
+from scipy import ndimage
 
 def extract_vdf(file,cid,box=-1):
     import numpy as np
@@ -53,12 +54,19 @@ def extract_vdf(file,cid,box=-1):
 
 def plot_vdfs(a,b):
     nx,ny,nz=np.shape(a)
-    fig, ax = plt.subplots(2, 2)
-    im1=ax[0,0].imshow(a[:,:,nz//2],norm=colors.LogNorm(vmin=1e-15))
-    im2=ax[0,1].imshow(b[:,:,nz//2],norm=colors.LogNorm(vmin=1e-15))
-    ax[1,0].plot(b[:,ny//2,nz//2],label="Reconstructed")
-    ax[1,0].plot(a[:,ny//2,nz//2],label="Original")
-    im4=ax[1,1].imshow(np.abs(a[:,:,nz//2] - b[:,:,nz//2]))
+    fig, ax = plt.subplots(2, 3, figsize=[12,6])
+    
+    slicer2d = np.s_[:,:,nz//2]
+    slicer1d = np.s_[:,ny//2,nz//2]
+    im1=ax[0,0].imshow(a[slicer2d],norm=colors.LogNorm(vmin=1e-15))
+    im2=ax[0,1].imshow(b[slicer2d],norm=colors.LogNorm(vmin=1e-15))
+    ax[1,0].semilogy(b[slicer1d],label="Reconstructed")
+    ax[1,0].semilogy(a[slicer1d],label="Original")
+    ax2 = ax[1,0].twinx()
+    ax2.plot(b[slicer1d]-a[slicer1d],label="Difference recon-orig",color='k')
+    yabs_max = abs(max(ax2.get_ylim(), key=abs))
+    ax2.set_ylim(ymin=-yabs_max, ymax=yabs_max)
+    im4=ax[1,1].imshow(np.abs(a[slicer2d] - b[slicer2d]))
     plt.colorbar(im1)
     plt.colorbar(im2)
     plt.colorbar(im4)
@@ -67,6 +75,74 @@ def plot_vdfs(a,b):
     ax[1,0].set_title("Profile")
     ax[1,1].set_title("Absolute Diff")
     ax[1,0].legend()
+    ax2.legend()
+    
+#     lapl_0 = ndimage.laplace(a)
+    lapl_0 = ndimage.gaussian_laplace(a,0.5)
+    #27-point stencil
+    k = np.array([[[2,3,2],[3,6,3]  ,[2,3,2]],
+                  [[3,6,3],[6,-88,8],[3,6,3]],
+                  [[2,3,2],[3,6,3]  ,[2,3,2]]])/26
+#     lapl_0 = ndimage.convolve(a, k)
+    im5 = ax[0,2].imshow(lapl_0[slicer2d],cmap='seismic')#norm=colors.SymLogNorm(1e-15,vmin=-1e-12,vmax=1e-12))
+#     im6 = ax[1,2].imshow(np.abs(lapl_0-ndimage.gaussian_laplace(b,1))[slicer2d])
+    plt.colorbar(im5)
+    im6 = ax[1,2].imshow((lapl_0**2/a)[slicer2d], norm=colors.LogNorm(vmin=1e-17,vmax=1e-13),cmap='seismic')
+    plt.colorbar(im6)
+    ax[0,2].set_title("Discrete laplacian, original")
+    ax[1,2].set_title("Discrete laplacian**2/vdf, original")
+#     ax[1,2].set_title("Abs. diff of laplacians")
+    plt.tight_layout()
+    plt.show()
+
+def plot_vdf_discrete_laplacians(a):
+    nx,ny,nz=np.shape(a)
+    fig, ax = plt.subplots(2, 3, figsize=[12,6])
+    
+    slicer2d = np.s_[:,:,nz//2]
+    slicer1d = np.s_[:,ny//2,nz//2]
+    im1=ax[0,0].imshow(a[slicer2d],norm=colors.LogNorm(vmin=1e-15))
+    im4=ax[1,0].imshow(a[slicer2d])
+    plt.colorbar(im1)
+    plt.colorbar(im4)
+    ax[0,0].set_title("VDF (log)")
+    ax[1,0].set_title("VDF (lin)")
+    
+    
+    lapl_0 = ndimage.laplace(a)
+    im2 = ax[0,1].imshow(lapl_0[slicer2d],cmap='seismic')
+    cmax = abs(max(im2.get_clim(), key=abs))
+    im2.set_clim([-cmax, cmax])
+    plt.colorbar(im2)
+    ax[0,1].set_title("ndimage.laplace")
+    
+    
+    #27-point stencil
+    k = np.array([[[2,3,2],[3,6,3]  ,[2,3,2]],
+                  [[3,6,3],[6,-88,8],[3,6,3]],
+                  [[2,3,2],[3,6,3]  ,[2,3,2]]])/26
+    lapl_0 = ndimage.convolve(a, k)
+    im3 = ax[1,1].imshow(lapl_0[slicer2d],cmap='seismic')#norm=colors.SymLogNorm(1e-15,vmin=-1e-12,vmax=1e-12))
+    cmax = abs(max(im3.get_clim(), key=abs))
+    im3.set_clim([-cmax, cmax])
+    plt.colorbar(im3)
+    ax[1,1].set_title("27-point laplacian")
+    
+
+    lapl_0 = ndimage.gaussian_laplace(a,0.5)
+   
+    im5 = ax[0,2].imshow(lapl_0[slicer2d],cmap='seismic')#,cmap='seismic')#norm=colors.SymLogNorm(1e-15,vmin=-1e-12,vmax=1e-12))
+    cmax = abs(max(im5.get_clim(), key=abs))
+    im5.set_clim([-cmax, cmax])
+    ax[0,2].set_title("Gauss. lapl, sigma 0.5")
+    plt.colorbar(im5)
+    lapl_0 = ndimage.gaussian_laplace(a,1)
+    im6 = ax[1,2].imshow((lapl_0)[slicer2d],cmap='seismic')#, norm=colors.LogNorm(vmin=1e-17,vmax=1e-13),cmap='seismic')
+    cmax = abs(max(im6.get_clim(), key=abs))
+    im6.set_clim([-cmax, cmax])
+    plt.colorbar(im6)
+    ax[1,2].set_title("Gauss. laplacian, sigma 1")
+
     plt.tight_layout()
     plt.show()
 
