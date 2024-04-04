@@ -72,9 +72,15 @@ def plot_vdfs(a,b):
     ax[1,1].set_title("Absolute Diff")
     ax[1,0].legend()
     
-    lapl_0 = ndimage.laplace(a)
+#     lapl_0 = ndimage.laplace(a)
+    lapl_0 = ndimage.gaussian_laplace(a,1)
+    #27-point stencil
+    k = np.array([[[2,3,2],[3,6,3]  ,[2,3,2]],
+                  [[3,6,3],[6,-88,8],[3,6,3]],
+                  [[2,3,2],[3,6,3]  ,[2,3,2]]])/26
+#     lapl_0 = ndimage.convolve(a, k)
     im5 = ax[0,2].imshow(lapl_0[slicer2d])
-    im6 = ax[1,2].imshow(np.abs(lapl_0-ndimage.laplace(b))[slicer2d])
+    im6 = ax[1,2].imshow(np.abs(lapl_0-ndimage.gaussian_laplace(b,1))[slicer2d])
     plt.colorbar(im5)
     plt.colorbar(im6)
     ax[0,2].set_title("Discrete laplacian, original")
