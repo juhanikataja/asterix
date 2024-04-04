@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from sklearn.mixture import GaussianMixture
 from scipy.optimize import curve_fit
+from scipy import ndimage
 
 def extract_vdf(file,cid,box=-1):
     import numpy as np
@@ -53,12 +54,15 @@ def extract_vdf(file,cid,box=-1):
 
 def plot_vdfs(a,b):
     nx,ny,nz=np.shape(a)
-    fig, ax = plt.subplots(2, 2)
-    im1=ax[0,0].imshow(a[:,:,nz//2],norm=colors.LogNorm(vmin=1e-15))
-    im2=ax[0,1].imshow(b[:,:,nz//2],norm=colors.LogNorm(vmin=1e-15))
-    ax[1,0].plot(b[:,ny//2,nz//2],label="Reconstructed")
-    ax[1,0].plot(a[:,ny//2,nz//2],label="Original")
-    im4=ax[1,1].imshow(np.abs(a[:,:,nz//2] - b[:,:,nz//2]))
+    fig, ax = plt.subplots(2, 3, figsize=[12,6])
+    
+    slicer2d = np.s_[:,:,nz//2]
+    slicer1d = np.s_[:,ny//2,nz//2]
+    im1=ax[0,0].imshow(a[slicer2d],norm=colors.LogNorm(vmin=1e-15))
+    im2=ax[0,1].imshow(b[slicer2d],norm=colors.LogNorm(vmin=1e-15))
+    ax[1,0].plot(b[slicer1d],label="Reconstructed")
+    ax[1,0].plot(a[slicer1d],label="Original")
+    im4=ax[1,1].imshow(np.abs(a[slicer2d] - b[slicer2d]))
     plt.colorbar(im1)
     plt.colorbar(im2)
     plt.colorbar(im4)
@@ -67,6 +71,14 @@ def plot_vdfs(a,b):
     ax[1,0].set_title("Profile")
     ax[1,1].set_title("Absolute Diff")
     ax[1,0].legend()
+    
+    lapl_0 = ndimage.laplace(a)
+    im5 = ax[0,2].imshow(lapl_0[slicer2d])
+    im6 = ax[1,2].imshow(np.abs(lapl_0-ndimage.laplace(b))[slicer2d])
+    plt.colorbar(im5)
+    plt.colorbar(im6)
+    ax[0,2].set_title("Discrete laplacian, original")
+    ax[1,2].set_title("Abs. diff of laplacians")
     plt.tight_layout()
     plt.show()
 
