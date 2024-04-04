@@ -95,6 +95,57 @@ def plot_vdfs(a,b):
     plt.tight_layout()
     plt.show()
 
+def plot_vdf_discrete_laplacians(a):
+    nx,ny,nz=np.shape(a)
+    fig, ax = plt.subplots(2, 3, figsize=[12,6])
+    
+    slicer2d = np.s_[:,:,nz//2]
+    slicer1d = np.s_[:,ny//2,nz//2]
+    im1=ax[0,0].imshow(a[slicer2d],norm=colors.LogNorm(vmin=1e-15))
+    im4=ax[1,0].imshow(a[slicer2d])
+    plt.colorbar(im1)
+    plt.colorbar(im4)
+    ax[0,0].set_title("VDF (log)")
+    ax[1,0].set_title("VDF (lin)")
+    
+    
+    lapl_0 = ndimage.laplace(a)
+    im2 = ax[0,1].imshow(lapl_0[slicer2d],cmap='seismic')
+    cmax = abs(max(im2.get_clim(), key=abs))
+    im2.set_clim([-cmax, cmax])
+    plt.colorbar(im2)
+    ax[0,1].set_title("ndimage.laplace")
+    
+    
+    #27-point stencil
+    k = np.array([[[2,3,2],[3,6,3]  ,[2,3,2]],
+                  [[3,6,3],[6,-88,8],[3,6,3]],
+                  [[2,3,2],[3,6,3]  ,[2,3,2]]])/26
+    lapl_0 = ndimage.convolve(a, k)
+    im3 = ax[1,1].imshow(lapl_0[slicer2d],cmap='seismic')#norm=colors.SymLogNorm(1e-15,vmin=-1e-12,vmax=1e-12))
+    cmax = abs(max(im3.get_clim(), key=abs))
+    im3.set_clim([-cmax, cmax])
+    plt.colorbar(im3)
+    ax[1,1].set_title("27-point laplacian")
+    
+
+    lapl_0 = ndimage.gaussian_laplace(a,0.5)
+   
+    im5 = ax[0,2].imshow(lapl_0[slicer2d],cmap='seismic')#,cmap='seismic')#norm=colors.SymLogNorm(1e-15,vmin=-1e-12,vmax=1e-12))
+    cmax = abs(max(im5.get_clim(), key=abs))
+    im5.set_clim([-cmax, cmax])
+    ax[0,2].set_title("Gauss. lapl, sigma 0.5")
+    plt.colorbar(im5)
+    lapl_0 = ndimage.gaussian_laplace(a,1)
+    im6 = ax[1,2].imshow((lapl_0)[slicer2d],cmap='seismic')#, norm=colors.LogNorm(vmin=1e-17,vmax=1e-13),cmap='seismic')
+    cmax = abs(max(im6.get_clim(), key=abs))
+    im6.set_clim([-cmax, cmax])
+    plt.colorbar(im6)
+    ax[1,2].set_title("Gauss. laplacian, sigma 1")
+
+    plt.tight_layout()
+    plt.show()
+
 def scale_vdf(vdf):
     vdf=vdf.astype(np.float64).flatten()
     vdf[vdf<1e-16]=1e-16
