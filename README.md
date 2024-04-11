@@ -1,4 +1,6 @@
 ## Asterix 
+<img src="images/logo.png" alt="Logo" width="200">     
+
 ### What is this about?   
 This is the prototyping repo for the Asterix project. We develop and showcase prototype methods for compressing VDFs in Vlasiator.
 So far this has been happening in our shared jupyter notebook ```Inno4Scale.ipynb```.     
