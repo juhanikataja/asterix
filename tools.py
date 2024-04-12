@@ -24,7 +24,9 @@ def extract_vdf(file,cid,box=-1):
     vids = np.arange(4 * 4 * 4 * int(size[0]) * int(size[1]) * int(size[2]))
 
     # -- put phase space density into array
-    dist = np.zeros_like(vids,dtype=float) 
+    dist = np.zeros_like(vids,dtype=float)
+    dist.fill(np.NaN)
+    dist.fill(0)
     dist[keys] = values
 
     # -- sort vspace by velocity
@@ -46,7 +48,7 @@ def extract_vdf(file,cid,box=-1):
     dist = dist[k]
     dist = dist.reshape(4*int(size[0]),4*int(size[1]),4*int(size[2]))
     vdf=dist
-    i,j,k = np.unravel_index(np.argmax(vdf), vdf.shape)
+    i,j,k = np.unravel_index(np.nanargmax(vdf), vdf.shape)
     len=box
     data=vdf[(i-len):(i+len),(j-len):(j+len),(k-len):(k+len)]
     return np.array(data,dtype=np.float32)
@@ -97,24 +99,34 @@ def plot_vdfs(a,b):
 
 def plot_vdf_discrete_laplacians(a):
     nx,ny,nz=np.shape(a)
-    fig, ax = plt.subplots(2, 3, figsize=[12,6])
+    fig, ax = plt.subplots(2, 3, figsize=[12,6], dpi=100)
     
     slicer2d = np.s_[:,:,nz//2]
     slicer1d = np.s_[:,ny//2,nz//2]
-    im1=ax[0,0].imshow(a[slicer2d],norm=colors.LogNorm(vmin=1e-15))
+    cm = plt.get_cmap("viridis")
+    cm.set_under('r')
+    im1=ax[0,0].imshow(a[slicer2d],norm=colors.LogNorm(vmin=1e-15),cmap=cm)
     im4=ax[1,0].imshow(a[slicer2d])
     plt.colorbar(im1)
     plt.colorbar(im4)
+    
     ax[0,0].set_title("VDF (log)")
+    
     ax[1,0].set_title("VDF (lin)")
     
-    
-    lapl_0 = ndimage.laplace(a)
-    im2 = ax[0,1].imshow(lapl_0[slicer2d],cmap='seismic')
+    lapl_0 = np.linalg.norm(np.stack(np.gradient(a), axis=-1),axis=-1)
+    im2 = ax[0,1].imshow(lapl_0[slicer2d],cmap='batlow',norm=colors.LogNorm(vmin=1e-17))
     cmax = abs(max(im2.get_clim(), key=abs))
-    im2.set_clim([-cmax, cmax])
+    # im2.set_clim([-cmax, cmax])
     plt.colorbar(im2)
-    ax[0,1].set_title("ndimage.laplace")
+    ax[0,1].set_title("|grad|")
+    
+    # lapl_0 = ndimage.laplace(a)
+    # im2 = ax[0,1].imshow(lapl_0[slicer2d],cmap='seismic')
+    # cmax = abs(max(im2.get_clim(), key=abs))
+    # im2.set_clim([-cmax, cmax])
+    # plt.colorbar(im2)
+    # ax[0,1].set_title("ndimage.laplace")
     
     
     #27-point stencil
@@ -129,12 +141,12 @@ def plot_vdf_discrete_laplacians(a):
     ax[1,1].set_title("27-point laplacian")
     
 
-    lapl_0 = ndimage.gaussian_laplace(a,0.5)
+    lapl_0 = ndimage.gaussian_laplace(a,0.75)
    
     im5 = ax[0,2].imshow(lapl_0[slicer2d],cmap='seismic')#,cmap='seismic')#norm=colors.SymLogNorm(1e-15,vmin=-1e-12,vmax=1e-12))
     cmax = abs(max(im5.get_clim(), key=abs))
     im5.set_clim([-cmax, cmax])
-    ax[0,2].set_title("Gauss. lapl, sigma 0.5")
+    ax[0,2].set_title("Gauss. lapl, sigma 0.75")
     plt.colorbar(im5)
     lapl_0 = ndimage.gaussian_laplace(a,1)
     im6 = ax[1,2].imshow((lapl_0)[slicer2d],cmap='seismic')#, norm=colors.LogNorm(vmin=1e-17,vmax=1e-13),cmap='seismic')
@@ -217,7 +229,7 @@ def run_gmm(vdf_3d,n_pop,norm_range):
 
 ### reconstruction of ANISOTROPIC gmm
 from numba import jit
-@jit(fastmath=True)
+@jit(fastmath=True, nopython=True)
 def multivariate_normal(x, mean, covariance_matrix):
     n = len(x)
     det_covariance = np.linalg.det(covariance_matrix)
@@ -264,7 +276,7 @@ def reconstruct_vdf(n_pop,means,covs,weights,n_bins,v_min,v_max):
 
 
 from numba import jit
-@jit(fastmath=True)
+@jit(fastmath=True, nopython=True)
 def gaussian_3d(xyz, A, x0, y0, z0, sigma_x, sigma_y, sigma_z):
     x, y, z = xyz
     return A * np.exp(
@@ -272,7 +284,7 @@ def gaussian_3d(xyz, A, x0, y0, z0, sigma_x, sigma_y, sigma_z):
     )
 
 ### create three base vectors
-@jit(fastmath=True)
+@jit(fastmath=True, nopython=True)
 def get_v_ax(v_min,v_max,n_bins):
     vx=np.linspace(v_min,v_max,n_bins)
     vy=np.linspace(v_min,v_max,n_bins)
@@ -348,7 +360,7 @@ def coefficient_matrix(vdf_3d_flat,mm,herm_array,v_xyz):
     return result
 
 # inverse transform / reconstruction of the original
-@jit(fastmath=True)
+@jit(fastmath=True, nopython=True)
 def inv_herm_trans(mm_matrix,herm_array, v_xyz):
     vx,vy,vz=v_xyz
     f=np.zeros_like(vx)
@@ -405,7 +417,7 @@ def run_gmm(vdf_3d,n_pop,norm_range):
 
 
 ### reconstruction of ANISOTROPIC gmm
-@jit(fastmath=True)
+@jit(fastmath=True, nopython=True)
 def multivariate_normal(x, mean, covariance_matrix):    
     n = len(x)
     det_covariance = np.linalg.det(covariance_matrix)
