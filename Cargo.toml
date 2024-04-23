@@ -12,7 +12,11 @@ num-traits = "0.2.18"
 pyo3 = { version = "0.21.1", features = ["extension-module"] }
 rand = "0.8.5"
 rayon = "1.10.0"
+ndarray = "0.15.6"
+ndarray-stats = "0.5.1"
+sphrs = "0.2.2"
 
 [lib]
+path = "src/lib.rs" 
 name="mlp_compress"
 crate-type = ["cdylib"]

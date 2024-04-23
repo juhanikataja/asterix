@@ -1,2 +1,8 @@
 /target
+Cargo.lock
 *bin
+__pycache__/
+*.py[cod]
+tags
+.ipynb_checkpoints/
+
