@@ -60,8 +60,8 @@ def plot_vdfs(a,b):
     
     slicer2d = np.s_[:,:,nz//2]
     slicer1d = np.s_[:,ny//2,nz//2]
-    im1=ax[0,0].imshow(a[slicer2d],norm=colors.LogNorm(vmin=1e-15))
-    im2=ax[0,1].imshow(b[slicer2d],norm=colors.LogNorm(vmin=1e-15))
+    im1=ax[0,0].imshow(a[slicer2d],norm=colors.LogNorm(vmin=1e-16))
+    im2=ax[0,1].imshow(b[slicer2d],norm=colors.LogNorm(vmin=1e-16))
     ax[1,0].semilogy(b[slicer1d],label="Reconstructed")
     ax[1,0].semilogy(a[slicer1d],label="Original")
     ax2 = ax[1,0].twinx()
