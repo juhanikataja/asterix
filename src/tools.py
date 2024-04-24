@@ -229,7 +229,7 @@ def run_gmm(vdf_3d,n_pop,norm_range):
 
 ### reconstruction of ANISOTROPIC gmm
 from numba import jit
-@jit(fastmath=True, nopython=True)
+@jit(fastmath=True, nopython=False)
 def multivariate_normal(x, mean, covariance_matrix):
     n = len(x)
     det_covariance = np.linalg.det(covariance_matrix)
@@ -417,7 +417,7 @@ def run_gmm(vdf_3d,n_pop,norm_range):
 
 
 ### reconstruction of ANISOTROPIC gmm
-@jit(fastmath=True, nopython=True)
+# @jit(fastmath=True, nopython=True)
 def multivariate_normal(x, mean, covariance_matrix):    
     n = len(x)
     det_covariance = np.linalg.det(covariance_matrix)
