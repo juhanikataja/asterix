@@ -191,8 +191,8 @@ def print_comparison_stats(a,b):
     # Calculate relative percentage difference in moments
     relative_diff_r = np.abs(density1 - density2) / np.mean([density1, density2]) * 100.0
     relative_diff_v = np.linalg.norm(np.array(mean1) - np.array(mean2)) / np.linalg.norm(np.mean([mean1, mean2], axis=0)) * 100.0
-    diff_p_trace = np.linalg.norm(np.diagonal(pressure1) - np.diagonal(pressure2))/np.mean([np.linalg.norm(np.diagonal(pressure1)),np.linalg.norm(np.diagonal(pressure2))])
-    diff_p_frob = np.linalg.norm(pressure1 - pressure2, ord='fro')/np.mean([np.linalg.norm(pressure1, ord='fro'),np.linalg.norm(pressure2, ord='fro')])
+    diff_p_trace = np.linalg.norm(np.diagonal(pressure1) - np.diagonal(pressure2))/np.mean([np.linalg.norm(np.diagonal(pressure1)),np.linalg.norm(np.diagonal(pressure2))]) * 100.0
+    diff_p_frob = np.linalg.norm(pressure1 - pressure2, ord='fro')/np.mean([np.linalg.norm(pressure1, ord='fro'),np.linalg.norm(pressure2, ord='fro')]) * 100.0
     print(f"Velocity Moment relative differences (n,V,P_diag, P_frobenius)= {np.round(relative_diff_r,3),np.round(relative_diff_v,3),np.format_float_scientific(diff_p_trace,3),np.format_float_scientific(diff_p_frob,3)} %.")
     l1,l2=relative_norms(a,b)
     print(f"L1,L2 rNorms= {np.round(l1,3),np.round(l2,3)}.")
