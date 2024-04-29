@@ -54,14 +54,14 @@ def extract_vdf(file,cid,box=-1):
     return np.array(data,dtype=np.float32)
 
 
-def plot_vdfs(a,b):
+def plot_vdfs(a,b, vdf_vmin = 1e-16):
     nx,ny,nz=np.shape(a)
     fig, ax = plt.subplots(2, 3, figsize=[12,6])
     
     slicer2d = np.s_[:,:,nz//2]
     slicer1d = np.s_[:,ny//2,nz//2]
-    im1=ax[0,0].imshow(a[slicer2d],norm=colors.LogNorm(vmin=1e-16))
-    im2=ax[0,1].imshow(b[slicer2d],norm=colors.LogNorm(vmin=1e-16))
+    im1=ax[0,0].imshow(a[slicer2d],norm=colors.LogNorm(vmin=vdf_vmin))
+    im2=ax[0,1].imshow(b[slicer2d],norm=colors.LogNorm(vmin=vdf_vmin))
     ax[1,0].semilogy(b[slicer1d],label="Reconstructed")
     ax[1,0].semilogy(a[slicer1d],label="Original")
     ax2 = ax[1,0].twinx()
@@ -78,22 +78,25 @@ def plot_vdfs(a,b):
     ax[1,1].set_title("Absolute Diff")
     ax[1,0].legend()
     ax2.legend()
-    
-#     lapl_0 = ndimage.laplace(a)
-    lapl_0 = ndimage.gaussian_laplace(a,0.5)
-    #27-point stencil
-    k = np.array([[[2,3,2],[3,6,3]  ,[2,3,2]],
-                  [[3,6,3],[6,-88,8],[3,6,3]],
-                  [[2,3,2],[3,6,3]  ,[2,3,2]]])/26
-#     lapl_0 = ndimage.convolve(a, k)
-    im5 = ax[0,2].imshow(lapl_0[slicer2d],cmap='seismic')#norm=colors.SymLogNorm(1e-15,vmin=-1e-12,vmax=1e-12))
-#     im6 = ax[1,2].imshow(np.abs(lapl_0-ndimage.gaussian_laplace(b,1))[slicer2d])
+
+    grad_a = np.stack(np.gradient(a),axis=-1)
+    grad_b = np.stack(np.gradient(b),axis=-1)
+    diff_grads = np.linalg.norm(grad_a-grad_b, axis=-1)
+
+    im5 = ax[0,2].imshow(diff_grads[slicer2d],cmap='batlow')
+    ax[0,2].set_title("norm(diff of gradient vectors)")
     plt.colorbar(im5)
-    im6 = ax[1,2].imshow((lapl_0**2/a)[slicer2d], norm=colors.LogNorm(vmin=1e-17,vmax=1e-13),cmap='seismic')
+
+ 
+    lapl_a = ndimage.gaussian_laplace(a,1)
+    lapl_b = ndimage.gaussian_laplace(b,1)
+
+    diff_lapls = lapl_a - lapl_b
+
+    im6 = ax[1,2].imshow(diff_grads[slicer2d],cmap='seismic')
+    ax[1,2].set_title("diff of (gaussian[1]) laplacians")
     plt.colorbar(im6)
-    ax[0,2].set_title("Discrete laplacian, original")
-    ax[1,2].set_title("Discrete laplacian**2/vdf, original")
-#     ax[1,2].set_title("Abs. diff of laplacians")
+
     plt.tight_layout()
     plt.show()
 
@@ -175,7 +178,18 @@ def print_comparison_stats(a,b):
         mean_velocity_x = np.sum(vdf * np.arange(vdf.shape[0])) / density
         mean_velocity_y = np.sum(vdf * np.arange(vdf.shape[1])) / density
         mean_velocity_z = np.sum(vdf * np.arange(vdf.shape[2])) / density
-        return density, (mean_velocity_x, mean_velocity_y, mean_velocity_z)
+
+        # CM velocities
+        wsx = (np.arange(vdf.shape[0]) - mean_velocity_x)
+        wsy = (np.arange(vdf.shape[1]) - mean_velocity_y)
+        wsz = (np.arange(vdf.shape[2]) - mean_velocity_z)
+
+        vgrid = np.stack(np.meshgrid(wsx,wsy,wsz,indexing='xy'))
+        print(vgrid.shape)
+
+        pressure = np.sum(vdf*vgrid[:,:,None]*vgrid[:,None,:],axis=(0,1,2))
+        
+        return density, (mean_velocity_x, mean_velocity_y, mean_velocity_z), pressure
     
     def relative_norms(a, b):
         diff = a - b
@@ -183,13 +197,15 @@ def print_comparison_stats(a,b):
         l2_norm = np.linalg.norm(diff) / np.linalg.norm(b)
         return l1_norm, l2_norm
         
-    density1, mean1 = get_moments(a)
-    density2, mean2 = get_moments(b)
+    density1, mean1, pressure1 = get_moments(a)
+    density2, mean2, pressure2 = get_moments(b)
     
     # Calculate relative percentage difference in moments
     relative_diff_r = np.abs(density1 - density2) / np.mean([density1, density2]) * 100.0
     relative_diff_v = np.linalg.norm(np.array(mean1) - np.array(mean2)) / np.linalg.norm(np.mean([mean1, mean2], axis=0)) * 100.0
-    print(f"Moment Stats (R,Vm)= {np.round(relative_diff_r,3),np.round(relative_diff_v,3)} %.")
+    diff_p_trace = np.linalg.norm(np.diagonal(pressure1) - np.diagonal(pressure2))/np.mean([np.linalg.norm(np.diagonal(pressure1)),np.linalg.norm(np.diagonal(pressure2))]) * 100.0
+    diff_p_frob = np.linalg.norm(pressure1 - pressure2, ord='fro')/np.mean([np.linalg.norm(pressure1, ord='fro'),np.linalg.norm(pressure2, ord='fro')]) * 100.0
+    print(f"Velocity Moment relative differences (n,V,P_diag, P_frobenius)= {np.round(relative_diff_r,3),np.round(relative_diff_v,3),np.format_float_scientific(diff_p_trace,3),np.format_float_scientific(diff_p_frob,3)} %.")
     l1,l2=relative_norms(a,b)
     print(f"L1,L2 rNorms= {np.round(l1,3),np.round(l2,3)}.")
     

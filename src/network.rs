@@ -22,9 +22,10 @@ pub mod network {
     use nalgebra::DMatrix;
     use rand::prelude::SliceRandom;
     use rand::{distributions::Uniform, Rng};
+    use rand_distr::{Distribution, Normal};
     use rayon::prelude::*;
     use std::fs::File;
-    use std::io::Write;
+    use std::io::{Read, Write};
 
     //Constants used in ADAM and ADAMW optmizers
     const ADAM_BETA1: f32 = 0.9;
@@ -42,6 +43,9 @@ pub mod network {
         + From<f32>
         + rand::distributions::uniform::SampleUniform
         + std::marker::Copy
+        + 'static
+        + Sized
+        + num_traits::FromBytes
     {
     }
 
@@ -51,6 +55,9 @@ pub mod network {
             + From<f32>
             + rand::distributions::uniform::SampleUniform
             + std::marker::Copy
+            + 'static
+            + Sized
+            + num_traits::FromBytes
     {
     }
 
@@ -118,6 +125,42 @@ pub mod network {
             self.delta.fill(T::zero());
         }
 
+        pub fn elu(val: T) -> T {
+            if val >= T::zero() {
+                val
+            } else {
+                let alpha: T = T::one();
+                alpha * (val.exp() - T::one())
+            }
+        }
+
+        pub fn elu_mut(val: &mut T) {
+            if *val >= T::zero() {
+                return;
+            } else {
+                let alpha: T = T::one();
+                *val = alpha * ((*val).exp() - T::one())
+            }
+        }
+
+        fn elu_prime(val: T) -> T {
+            let alpha: T = T::one();
+            if val >= T::zero() {
+                T::one()
+            } else {
+                Self::elu(val) + alpha
+            }
+        }
+
+        fn elu_prime_mut(val: &mut T) {
+            let alpha: T = T::one();
+            if *val >= T::zero() {
+                *val = T::one();
+            } else {
+                *val = Self::elu(*val) + alpha;
+            }
+        }
+
         fn tanh_mut(val: &mut T) {
             let ex: T = T::exp(*val);
             let exn: T = T::exp(-*val);
@@ -131,11 +174,13 @@ pub mod network {
         }
 
         fn tanh_prime_mut(val: &mut T) {
-            *val = T::one() - *val * *val;
+            let tanh_val = Self::tanh(*val);
+            *val = T::one() - tanh_val * tanh_val;
         }
 
         fn tanh_prime(val: T) -> T {
-            T::one() - val * val
+            let tanh_val = Self::tanh(val);
+            T::one() - tanh_val * tanh_val
         }
 
         fn leaky_relu_mut(val: &mut T) {
@@ -165,20 +210,54 @@ pub mod network {
                 0.001.into()
             }
         }
+        pub fn sigmoid(val: T) -> T {
+            T::one() / (T::one() + (-val).exp())
+        }
+
+        pub fn sigmoid_mut(val: &mut T) {
+            *val = T::one() / (T::one() + (-*val).exp());
+        }
+
+        fn sigmoid_prime(val: T) -> T {
+            let sigmoid_val = Self::sigmoid(val);
+            sigmoid_val * (T::one() - sigmoid_val)
+        }
+
+        fn sigmoid_prime_mut(val: &mut T) {
+            let sigmoid_val = Self::sigmoid(*val);
+            *val = sigmoid_val * (T::one() - sigmoid_val);
+        }
+        pub fn softmax(val: T) -> T {
+            val.exp() // Softmax for a single value is just the exponential function
+        }
+
+        pub fn softmax_mut(val: &mut T) {
+            *val = val.exp(); // Softmax for a single value is just the exponential function
+        }
+
+        pub fn softmax_prime(val: T) -> T {
+            let softmax_val = Self::softmax(val);
+            softmax_val * (T::one() - softmax_val) // Derivative of softmax function
+        }
+
+        pub fn softmax_prime_mut(val: &mut T) {
+            let softmax_val = Self::softmax(*val);
+            *val = softmax_val * (T::one() - softmax_val); // Derivative of softmax function
+        }
 
         pub fn activate(val: T) -> T {
-            FullyConnectedLayer::leaky_relu(val)
+            FullyConnectedLayer::elu(val)
         }
         pub fn activate_mut(val: &mut T) {
-            FullyConnectedLayer::leaky_relu_mut(val);
+            FullyConnectedLayer::elu_mut(val);
         }
 
         pub fn activate_prime(val: T) -> T {
-            FullyConnectedLayer::leaky_relu_prime(val)
+            FullyConnectedLayer::elu_prime(val)
         }
 
         pub fn activate_prime_mut(val: &mut T) {
-            FullyConnectedLayer::leaky_relu_prime_mut(val);
+            FullyConnectedLayer::elu_prime_mut(val);
         }
 
         pub fn activate_prime_matrix(matrix: &DMatrix<T>) -> DMatrix<T> {
@@ -218,7 +297,7 @@ pub mod network {
 
     impl<T> Network<T>
     where
-        T: NeuralNetworkTrait<T>,
+        T: NeuralNetworkTrait<T> + for<'a> std::iter::Sum<&'a T>,
     {
         pub fn new(
             input_size: usize,
@@ -282,7 +361,42 @@ pub mod network {
             filename: &str,
             batch_size: usize,
         ) -> Result<Self, Box<dyn std::error::Error>> {
+            let mut file = File::open(filename)?;
+            let mut buffer: Vec<u8> = Vec::new();
+            let bytes_read = file.read_to_end(&mut buffer)?;
+            let footer = buffer.split_off(buffer.len() - TAG.len());
             todo!();
+        }
+
+        pub fn randomize_he(&mut self) {
+            let mut rng = rand::thread_rng();
+            for i in 1..self.layers.len() {
+                let fan_in = self.layers[i - 1].w.len();
+                let he_stddev: f32 = (2.0 / (fan_in as f32)).sqrt();
+                let normal = Normal::new(0.0, he_stddev).unwrap();
+                let mut he = |elem: &mut T| {
+                    *elem = T::from(normal.sample(&mut rng));
+                };
+
+                self.layers[i].w.apply(|x| he(x));
+                self.layers[i].b.apply(|x| he(x));
+            }
+        }
+
+        pub fn randomize_xavier(&mut self) {
+            let mut rng = rand::thread_rng();
+            for i in 1..self.layers.len() {
+                let fan_in = if i > 0 { self.layers[i - 1].w.len() } else { 0 };
+                let fan_out = self.layers[i].w.len();
+                let xavier_stddev = (1.0 / ((fan_in + fan_out) as f32 / 2.0)).sqrt();
+                let distribution = Normal::new(0.0, xavier_stddev).unwrap();
+                let mut xavier = |elem: &mut T| {
+                    *elem = T::from(distribution.sample(&mut rng));
+                };
+
+                self.layers[i].w.apply(|x| xavier(x));
+                self.layers[i].b.apply(|x| xavier(x));
+            }
         }
 
         fn forward_matrix(&mut self, input: &DMatrix<T>) {
@@ -343,30 +457,27 @@ pub mod network {
             input_data: &DMatrix<T>,
             output_data: &DMatrix<T>,
             batch_size: usize,
+            thread_id: usize,
         ) -> T {
-            let my_id = match rayon::current_thread_index() {
-                Some(v) => v,
-                None => 0,
-            };
+            let my_id = thread_id;
             let ncols = input_data.ncols();
-            let nsamples = input_data.nrows();
             let ncols_out = output_data.ncols();
             let mut buffer = DMatrix::<T>::zeros(batch_size, ncols);
             let mut target = DMatrix::<T>::zeros(batch_size, ncols_out);
             let index = offset + batch_size * my_id;
             for k in 0..batch_size {
                 for j in 0..ncols {
-                    buffer[(k, j)] = input_data[((index + k) % nsamples, j)];
+                    buffer[(k, j)] = input_data[(index + k, j)];
                 }
                 for j in 0..ncols_out {
-                    target[(k, j)] = output_data[((index + k) % nsamples, j)];
+                    target[(k, j)] = output_data[(index + k, j)];
                 }
             }
             Network::<T>::forward_all(thread_layers, &buffer);
             let output_error = Network::<T>::get_output_gradient_all(thread_layers, &target);
             let running_cost = output_error.sum().powi(2) as T;
             Network::<T>::backward_all(thread_layers, &buffer, &output_error, T::one());
-            // Network::<T>::scale_all(thread_layers, batch_size);
+            Network::<T>::scale_all(thread_layers, batch_size);
             running_cost
         }
 
@@ -378,6 +489,7 @@ pub mod network {
             let mut target = DMatrix::<T>::zeros(self.batch_size, ncols_out);
             let mut running_cost: T = T::zero();
             self.shuffle_network_data();
+            self.zero_optimizer();
             for i in (0..self.input_data.nrows()).step_by(self.batch_size) {
                 self.reset_deltas();
                 if i + self.batch_size >= self.input_data.nrows() {
@@ -396,7 +508,7 @@ pub mod network {
                 running_cost += output_error.sum().powi(2) as T;
                 Self::backward_all(&mut self.layers, &buffer, &output_error, T::one());
                 Self::scale_all(&mut self.layers, self.batch_size);
-                self.optimize_adamw(epoch + 1, lr);
+                self.optimize_adamw(i + 1, lr);
             }
             running_cost / num_samples.into()
         }
@@ -411,13 +523,9 @@ pub mod network {
                 return self.train_minibatch_serial(lr, epoch);
             }
 
-            //Create a thread local copy of our layers
-            if self.m_thread_layers.len() != num_threads {
-                self.m_thread_layers = vec![self.layers.clone(); num_threads];
-            }
-
             //Shuffle the input
             self.shuffle_network_data();
+            self.zero_optimizer();
 
             let mut loops = 0;
             let mut running_cost: T = T::zero();
@@ -426,9 +534,14 @@ pub mod network {
                 let offset = loops * samples_per_loop;
 
                 //Break if we did go through all of our samples
-                if offset > self.input_data.nrows() - batch_size {
+                if offset + samples_per_loop >= self.input_data.nrows() {
                     break;
                 }
+
+                //Get a local copy of the network
+                //TODO is this needed on every batch pass?
+                self.m_thread_layers = vec![self.layers.clone(); num_threads];
+                assert!(self.m_thread_layers.len() == num_threads);
 
                 //Reset deltas for this round
                 self.reset_deltas();
@@ -439,35 +552,32 @@ pub mod network {
                 });
 
                 //Train each thread
-                let thread_costs = self
+                running_cost += self
                     .m_thread_layers
                     .par_iter_mut()
-                    .map(|local_layer| -> T {
+                    .enumerate()
+                    .map(|(id, local_layer)| -> T {
                         Self::thread_train(
                             local_layer,
                             offset,
                             &self.input_data,
                             &self.output_data,
                             self.batch_size,
+                            id,
                         )
                     })
-                    .collect::<Vec<T>>();
+                    .collect::<Vec<T>>()
+                    .iter()
+                    .sum();
 
-                //Collect costs
-                for c in thread_costs.iter() {
-                    running_cost += *c;
-                }
-
-                //Collect gradients
                 for thread_layer in self.m_thread_layers.iter() {
-                    for i in 0..thread_layer.len() {
+                    for i in 0..self.layers.len() {
                         self.layers[i].dw += &thread_layer[i].dw;
                         self.layers[i].db += &thread_layer[i].db;
                     }
                 }
 
-                // Network::<T>::scale_all(&mut self.layers, num_threads);
-                self.optimize_adamw(epoch + 1, lr);
+                self.optimize_adamw(loops + 1, lr);
                 loops += 1;
             }
             running_cost / num_samples.into()
@@ -642,6 +752,10 @@ pub mod network {
         }
 
         pub fn get_state(&self) -> Vec<u8> {
+            assert!(
+                std::mem::size_of::<T>() == std::mem::size_of::<f64>(),
+                "Saving f32 networks is not supported yet"
+            );
             //Hardcoded 1 below is the 8 bytes we need to store the number of layers
             let total_bytes = self.calculate_total_bytes()
                 + std::mem::size_of::<usize>() * (self.layers.len() + 1)

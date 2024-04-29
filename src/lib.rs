@@ -12,7 +12,6 @@ use std::fs::File;
 use std::io::Read;
 use std::time::Instant;
 
-const VDF_SIZE: usize = 50;
 const MIN_VAL: f64 = 1e-16;
 
 //Magic numbers
@@ -25,7 +24,7 @@ const DPHI: f32 = 1.0;
 //~Magic numbers
 
 // ******************* MLP COMPRESSION *************************************//
-fn read_vdf_from_file(filename: &str) -> Result<Vec<f64>, Box<dyn std::error::Error>> {
+fn read_vdf_from_file(filename: &str, size: usize) -> Result<Vec<f64>, Box<dyn std::error::Error>> {
     println!("Reading VDF from {filename}");
     let mut f = File::open(filename)?;
     let mut buffer: Vec<u8> = vec![];
@@ -38,11 +37,15 @@ fn read_vdf_from_file(filename: &str) -> Result<Vec<f64>, Box<dyn std::error::Er
         }
         vdf.push(f64::from_ne_bytes(slice));
     }
-    assert_eq!(vdf.len(), VDF_SIZE * VDF_SIZE * VDF_SIZE);
+    assert_eq!(vdf.len(), size * size * size);
     Ok(vdf)
 }
 
-fn vdf_fourier_features(vdf: &Vec<f64>, order: usize) -> (DMatrix<f64>, DMatrix<f64>, Vec<f64>) {
+fn vdf_fourier_features(
+    vdf: &Vec<f64>,
+    order: usize,
+    size: usize,
+) -> (DMatrix<f64>, DMatrix<f64>, Vec<f64>) {
     let total_dims = 3 + order * 6;
 
     let mut harmonics: Vec<f64> = vec![0.0; order];
@@ -56,12 +59,12 @@ fn vdf_fourier_features(vdf: &Vec<f64>, order: usize) -> (DMatrix<f64>, DMatrix<
 
     // Iterate over pixels
     let mut counter = 0;
-    for z in 0..VDF_SIZE {
-        for y in 0..VDF_SIZE {
-            for x in 0..VDF_SIZE {
-                let pos_z = z as f64 / VDF_SIZE as f64 - 0.5;
-                let pos_y = y as f64 / VDF_SIZE as f64 - 0.5;
-                let pos_x = x as f64 / VDF_SIZE as f64 - 0.5;
+    for z in 0..size {
+        for y in 0..size {
+            for x in 0..size {
+                let pos_z = z as f64 / size as f64 - 0.5;
+                let pos_y = y as f64 / size as f64 - 0.5;
+                let pos_x = x as f64 / size as f64 - 0.5;
                 vspace[(counter, 0)] = pos_x;
                 vspace[(counter, 1)] = pos_y;
                 vspace[(counter, 2)] = pos_z;
@@ -118,8 +121,9 @@ fn compress_vdf(
     epochs: usize,
     n_layers: usize,
     n_neurons: usize,
+    size: usize,
 ) -> Vec<f64> {
-    let (vspace, density, _harmonics) = vdf_fourier_features(&vdf, fourier_order);
+    let (vspace, density, _harmonics) = vdf_fourier_features(&vdf, fourier_order, size);
     let mut net = Network::<f64>::new(
         vspace.ncols(),
         density.ncols(),
@@ -129,6 +133,7 @@ fn compress_vdf(
         &density,
         8,
     );
+    net.randomize_xavier();
     //Train
     let before = Instant::now();
     for epoch in 0..epochs {
@@ -167,7 +172,10 @@ fn compress_vdf(
  ******************
 */
 
-fn read_vdf_from_file_to_nd(filename: &str) -> Result<Array3<f64>, Box<dyn std::error::Error>> {
+fn read_vdf_from_file_to_nd(
+    filename: &str,
+    size: usize,
+) -> Result<Array3<f64>, Box<dyn std::error::Error>> {
     println!("Reading VDF from {filename}");
     let mut f = File::open(filename)?;
     let mut buffer: Vec<u8> = vec![];
@@ -181,17 +189,17 @@ fn read_vdf_from_file_to_nd(filename: &str) -> Result<Array3<f64>, Box<dyn std::
         vdf_buffer.push(f64::from_ne_bytes(slice));
     }
 
-    let mut vdf: Array3<f64> = Array3::<f64>::zeros((VDF_SIZE, VDF_SIZE, VDF_SIZE));
+    let mut vdf: Array3<f64> = Array3::<f64>::zeros((size, size, size));
     let mut index = 0;
-    for k in 0..VDF_SIZE {
-        for j in 0..VDF_SIZE {
-            for i in 0..VDF_SIZE {
+    for k in 0..size {
+        for j in 0..size {
+            for i in 0..size {
                 vdf[[i, j, k]] = vdf_buffer[index];
                 index += 1;
             }
         }
     }
-    assert_eq!(vdf.len(), VDF_SIZE * VDF_SIZE * VDF_SIZE);
+    assert_eq!(vdf.len(), size * size * size);
     Ok(vdf)
 }
 
@@ -230,6 +238,7 @@ fn vdf_to_spherical_shells(
     nshells: usize,
     ntheta: usize,
     nphi: usize,
+    size: usize,
 ) -> Array3<f64> {
     let r_values = get_linspace(0.0, 1.0, nshells);
     let theta_values = get_linspace(0.0, std::f64::consts::PI, ntheta);
@@ -253,7 +262,7 @@ fn vdf_to_spherical_shells(
                 let x_index = ((x_point + 1.0) * 24.0).round() as usize; // Scale and shift x to match grid indices
                 let y_index = ((y_point + 1.0) * 24.0).round() as usize; // Scale and shift y to match grid indices
                 let z_index = ((z_point + 1.0) * 24.0).round() as usize; // Scale and shift z to match grid indices
-                if x_index < VDF_SIZE && y_index < VDF_SIZE && z_index < VDF_SIZE {
+                if x_index < size && y_index < size && z_index < size {
                     spherical_shells[[i, j, k]] = vdf[[x_index, y_index, z_index]];
                 }
             }
@@ -267,6 +276,7 @@ fn spherical_shells_to_vdf(
     nshells: usize,
     ntheta: usize,
     nphi: usize,
+    size: usize,
 ) -> Array3<f64> {
     let r_values = get_linspace(0.0, 1.0, nshells);
     let theta_values = get_linspace(0.0, std::f64::consts::PI, ntheta);
@@ -287,7 +297,7 @@ fn spherical_shells_to_vdf(
     //~Remappings
 
     //Retvals go here
-    let mut vdf = Array3::<f64>::zeros((VDF_SIZE, VDF_SIZE, VDF_SIZE));
+    let mut vdf = Array3::<f64>::zeros((size, size, size));
 
     for i in 0..nshells {
         for j in 0..ntheta {
@@ -296,7 +306,7 @@ fn spherical_shells_to_vdf(
                 let y_index = y_cart_r[[i, j, k]];
                 let z_index = z_cart_r[[i, j, k]];
 
-                if x_index < 50 && y_index < 50 && z_index < 50 {
+                if x_index < size && y_index < size && z_index < size {
                     vdf[[x_index, y_index, z_index]] = spherical_shells[[i, j, k]];
                 }
             }
@@ -422,11 +432,11 @@ fn calculate_compression_ratio(original_vdf: &Array3<f64>, coeffs: &Vec<Vec<f32>
     ratio
 }
 
-fn vdf_nd_array_to_vec(vdf: &Array3<f64>) -> Vec<f64> {
-    let mut vdf_buffer: Vec<f64> = Vec::with_capacity(VDF_SIZE * VDF_SIZE * VDF_SIZE);
-    for k in 0..VDF_SIZE {
-        for j in 0..VDF_SIZE {
-            for i in 0..VDF_SIZE {
+fn vdf_nd_array_to_vec(vdf: &Array3<f64>, size: usize) -> Vec<f64> {
+    let mut vdf_buffer: Vec<f64> = Vec::with_capacity(size * size * size);
+    for k in 0..size {
+        for j in 0..size {
+            for i in 0..size {
                 vdf_buffer.push(vdf[[i, j, k]]);
             }
         }
@@ -442,8 +452,9 @@ fn compress_mlp(
     epochs: usize,
     n_layers: usize,
     n_neurons: usize,
+    size: usize,
 ) -> PyResult<Vec<f64>> {
-    let mut vdf = match read_vdf_from_file(&vdf_file) {
+    let mut vdf = match read_vdf_from_file(&vdf_file, size) {
         Ok(v) => v,
         Err(err) => {
             eprintln!("{:?}", err);
@@ -451,14 +462,14 @@ fn compress_mlp(
         }
     };
     scale_vdf(&mut vdf);
-    let mut reconstructed = compress_vdf(&vdf, fourier_order, epochs, n_layers, n_neurons);
+    let mut reconstructed = compress_vdf(&vdf, fourier_order, epochs, n_layers, n_neurons, size);
     unscale_vdf(&mut reconstructed);
     Ok(reconstructed)
 }
 
 #[pyfunction]
-fn compress_sph(vdf_file: &str, degree: usize) -> PyResult<Vec<f64>> {
-    let vdf = match read_vdf_from_file_to_nd(&vdf_file) {
+fn compress_sph(vdf_file: &str, degree: usize, size: usize) -> PyResult<Vec<f64>> {
+    let vdf = match read_vdf_from_file_to_nd(&vdf_file, size) {
         Ok(v) => v,
         Err(err) => {
             eprintln!("{:?}", err);
@@ -466,12 +477,12 @@ fn compress_sph(vdf_file: &str, degree: usize) -> PyResult<Vec<f64>> {
         }
     };
 
-    let spherical_shells = vdf_to_spherical_shells(&vdf, NSHELLS, NTHETA, NPHI);
+    let spherical_shells = vdf_to_spherical_shells(&vdf, NSHELLS, NTHETA, NPHI, size);
     let (factors, coeffs) = decompose(&spherical_shells, degree);
     let recosntructed = reconstruct(&factors, &coeffs, degree, NSHELLS, NTHETA, NPHI);
     // let reconstructed_vdf = spherical_shells_to_vdf(&spherical_shells, NSHELLS, NTHETA, NPHI);
-    let reconstructed_vdf = spherical_shells_to_vdf(&recosntructed, NSHELLS, NTHETA, NPHI);
-    let vdf_retval = vdf_nd_array_to_vec(&reconstructed_vdf);
+    let reconstructed_vdf = spherical_shells_to_vdf(&recosntructed, NSHELLS, NTHETA, NPHI, size);
+    let vdf_retval = vdf_nd_array_to_vec(&reconstructed_vdf, size);
     let ratio = calculate_compression_ratio(&vdf, &coeffs);
     println!("Compression ratio = {}x .", ratio);
     Ok(vdf_retval)
