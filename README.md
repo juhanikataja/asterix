@@ -28,6 +28,6 @@ The MLP used, is hosted in this repo and is written in Rust. To use it from pyth
 + Do a ```pip install -r requirements.txt``` to get all the needed packages.    
 + Inside your virtual environment you can build the project with ```maturin develop --release```.      
 + Open up the notebook ```Inno4Scale.ipynb``` and have fun.   
-+ With each fresh commit we try to maintain a PDF form of the notebook under pdf/.
++ With each fresh commit we try to maintain a PDF form of the notebook found [here](pdf/Inno4Scale.pdf) and  under ```pdf/```.
 + On a modern system with an NVIDIA GPU running the full notebook should take less than 3 minutes.   
 
