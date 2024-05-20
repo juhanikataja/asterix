@@ -12,8 +12,6 @@ use std::fs::File;
 use std::io::Read;
 use std::time::Instant;
 
-const MIN_VAL: f64 = 1e-16;
-
 //Magic numbers
 const DEG2RAD: f32 = std::f32::consts::PI / 180.0;
 const NSHELLS: usize = 50;
@@ -90,14 +88,14 @@ fn vdf_fourier_features(
     (vspace, density, harmonics)
 }
 
-fn scale_vdf(vdf: &mut Vec<f64>) {
+fn scale_vdf(vdf: &mut Vec<f64>, sparse: f64) {
     vdf.iter_mut()
-        .for_each(|x| *x = f64::abs(f64::log10(f64::max(*x, MIN_VAL))));
+        .for_each(|x| *x = f64::abs(f64::log10(f64::max(*x, sparse))));
 }
 
-fn unscale_vdf(vdf: &mut Vec<f64>) {
+fn unscale_vdf(vdf: &mut Vec<f64>, sparse: f64) {
     vdf.iter_mut()
-        .for_each(|x| *x = f64::max(f64::powf(10.0, -1.0 * *x), MIN_VAL));
+        .for_each(|x| *x = f64::max(f64::powf(10.0, -1.0 * *x), sparse));
 }
 
 fn normalize_vdf(vdf: &mut Vec<f64>) -> f64 {
@@ -463,6 +461,7 @@ fn compress_mlp(
     n_layers: usize,
     n_neurons: usize,
     size: usize,
+    sparse: f64,
 ) -> PyResult<Vec<f64>> {
     let mut vdf = match read_vdf_from_file(&vdf_file, size) {
         Ok(v) => v,
@@ -471,11 +470,29 @@ fn compress_mlp(
             panic!();
         }
     };
-    scale_vdf(&mut vdf);
+    scale_vdf(&mut vdf, sparse);
     let norm = normalize_vdf(&mut vdf);
     let mut reconstructed = compress_vdf(&vdf, fourier_order, epochs, n_layers, n_neurons, size);
     unnormalize_vdf(&mut reconstructed, norm);
-    unscale_vdf(&mut reconstructed);
+    unscale_vdf(&mut reconstructed, sparse);
+    Ok(reconstructed)
+}
+
+#[pyfunction]
+fn compress_mlp_from_vec(
+    mut vdf: Vec<f64>,
+    fourier_order: usize,
+    epochs: usize,
+    n_layers: usize,
+    n_neurons: usize,
+    size: usize,
+    sparse: f64,
+) -> PyResult<Vec<f64>> {
+    scale_vdf(&mut vdf, sparse);
+    let norm = normalize_vdf(&mut vdf);
+    let mut reconstructed = compress_vdf(&vdf, fourier_order, epochs, n_layers, n_neurons, size);
+    unnormalize_vdf(&mut reconstructed, norm);
+    unscale_vdf(&mut reconstructed, sparse);
     Ok(reconstructed)
 }
 
@@ -503,6 +520,7 @@ fn compress_sph(vdf_file: &str, degree: usize, size: usize) -> PyResult<Vec<f64>
 #[pymodule]
 fn mlp_compress(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compress_mlp, m)?)?;
+    m.add_function(wrap_pyfunction!(compress_mlp_from_vec, m)?)?;
     m.add_function(wrap_pyfunction!(compress_sph, m)?)?;
     Ok(())
 }
