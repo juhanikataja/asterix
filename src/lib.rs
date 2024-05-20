@@ -100,6 +100,16 @@ fn unscale_vdf(vdf: &mut Vec<f64>) {
         .for_each(|x| *x = f64::max(f64::powf(10.0, -1.0 * *x), MIN_VAL));
 }
 
+fn normalize_vdf(vdf: &mut Vec<f64>) -> f64 {
+    let max_val = vdf.iter().max_by(|a, b| a.total_cmp(b)).unwrap().clone();
+    vdf.iter_mut().for_each(|x| *x = *x / max_val);
+    max_val
+}
+
+fn unnormalize_vdf(vdf: &mut Vec<f64>, max_val: f64) {
+    vdf.iter_mut().for_each(|x| *x = *x * max_val);
+}
+
 fn reconstruct_vdf(net: &mut Network<f64>, vspace: &DMatrix<f64>) -> Vec<f64> {
     let mut sample = DMatrix::<f64>::zeros(1, vspace.ncols());
     let mut buffer = DMatrix::<f64>::zeros(1, 1);
@@ -462,7 +472,9 @@ fn compress_mlp(
         }
     };
     scale_vdf(&mut vdf);
+    let norm = normalize_vdf(&mut vdf);
     let mut reconstructed = compress_vdf(&vdf, fourier_order, epochs, n_layers, n_neurons, size);
+    unnormalize_vdf(&mut reconstructed, norm);
     unscale_vdf(&mut reconstructed);
     Ok(reconstructed)
 }
