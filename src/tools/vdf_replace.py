@@ -15,7 +15,7 @@ if len(sys.argv) != 2:
     sys.exit()
 
 
-def reconstruct_cid(f, cid,len):
+def reconstruct_cid(f, cid, len):
     max_indexes, vdf = vdf_extract.extract(f, cid, len)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
@@ -192,8 +192,8 @@ def reconstruct_vdfs(file):
     print("Cell IDs to replace =", cids)
     for cid in cids:
         print(f"Extracting CellID {cid}")
-        len=25
-        _, reconstructed = reconstruct_cid(f, cid,len)
+        len = 25
+        _, reconstructed = reconstruct_cid(f, cid, len)
         # _,reconstructed=vdf_extract.extract(f,cid,-1)
         # reconstructed=np.array(reconstructed,dtype=np.float32)
 
