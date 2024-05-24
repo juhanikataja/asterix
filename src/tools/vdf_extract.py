@@ -5,7 +5,6 @@ def extract(f,cid,len=25):
     import matplotlib.pyplot as plt
     from matplotlib.colors import LogNorm
     from matplotlib.colors import LogNorm
-
     assert(cid>0)
 
     # -- read phase space density
@@ -23,20 +22,21 @@ def extract(f,cid,len=25):
 
     # -- sort vspace by velocity
     v = f.get_velocity_cell_coordinates(vids)
+    kk = f.get_velocity_cell_coordinates(vids)
 
     i = np.argsort(v[:,0],kind='stable')
     v = v[i]
-    #vids = vids[i]
+    vids = vids[i]
     dist = dist[i]
 
     j = np.argsort(v[:,1],kind='stable')
     v = v[j]
-    #vids = vids[j]
+    vids = vids[j]
     dist = dist[j]
 
     k = np.argsort(v[:,2],kind='stable')
     v = v[k]
-    #vids = vids[k]
+    vids = vids[k]
     dist = dist[k]
     dist = dist.reshape(4*int(size[0]),
                         4*int(size[1]),
@@ -45,17 +45,20 @@ def extract(f,cid,len=25):
 
 
     vdf=dist
-    i,j,k = np.unravel_index(np.argmax(vdf), vdf.shape)
-    data=vdf[(i-len):(i+len),(j-len):(j+len),(k-len):(k+len)]
-
-    print(np.shape(data))
-    return np.array(data,dtype=np.double)
+    if len>0:
+        i,j,k = np.unravel_index(np.argmax(vdf), vdf.shape)
+        data=vdf[(i-len):(i+len),(j-len):(j+len),(k-len):(k+len)]
+    else:
+        i=j=k=0
+        data=vdf[:,:,:]
+    print(f"Extracted VDF shape = {np.shape(data)}")
+    return [i,j,k],np.array(data,dtype=np.double)
 
 if __name__=="__main__":
     import os,sys
     if ( len(sys.argv)<3 ):
         print(f"Usage: ./{sys.argv[0]} <vlsv_file> <cell_id>")
-        sys.exit()
+        sys.exit(1)
     file=sys.argv[1]
     cid = int(sys.argv[2])  
     f = pt.vlsvfile.VlsvReader(file)
