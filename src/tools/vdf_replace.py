@@ -23,7 +23,7 @@ def reconstruct_cid(f, cid, len):
     if f.check_variable("MinValue"):
         sparsity = f.read_variable("proton" + "/EffectiveSparsityThreshold", cid)
     reconstructed_vdf = np.reshape(
-        mlp_compress.compress_mlp_from_vec(vdf.flatten(), 12, 20, 2, 50, nx, sparsity),
+        mlp_compress.compress_mlp_from_vec(vdf.flatten(), 12, 1, 2, 50, nx, sparsity),
         (nx, ny, nz),
     )
     mesh = f.get_velocity_mesh_size()
@@ -90,12 +90,13 @@ def xml_footer_indent(elem, level=0):
             elem.tail = i
 
 
-def write_and_update_xml(fptr, xml, cellid, blocks_and_values):
+def write_and_update_xml(fptr, xml, cellid, blocks_and_values,bpc):
 
     # Add back the reconstructed VDFs
     cells_with_blocks = np.array([cellid])
     number_of_blocks = len(blocks_and_values)
-    blocks_per_cell = np.array([15625])
+    blocks_per_cell = np.array([cellid])
+    blocks_per_cell[:]=bpc
     bytes_written = 0
 
     tag = generate_tag(
@@ -128,9 +129,11 @@ def write_and_update_xml(fptr, xml, cellid, blocks_and_values):
     data.tofile(fptr)
     bytes_written += data.nbytes
 
+    data = np.atleast_1d(blocks_and_values[0])
+    a,b=np.shape(data)
     tag = generate_tag(
         "BLOCKIDS",
-        len(blocks_and_values[0]),
+        a*b,
         4,
         "uint",
         "SpatialGrid",
@@ -139,19 +142,20 @@ def write_and_update_xml(fptr, xml, cellid, blocks_and_values):
         fptr.tell(),
     )
     xml.append(ET.fromstring(tag))
-    data = np.atleast_1d(blocks_and_values[0])
     print(f"Writing {np.shape(data)} ,min={np.min(data)}, max= {np.max(data)}")
     data.tofile(fptr)
     bytes_written += data.nbytes
 
+    data = np.atleast_1d(blocks_and_values[1])
+    a,b,c=np.shape(data)
     tag = generate_tag(
         "BLOCKVARIABLE",
-        len(blocks_and_values[0]),
+        a*b,
         4,
         "float",
         "SpatialGrid",
         "proton",
-        64,
+        c,
         fptr.tell(),
     )
     xml.append(ET.fromstring(tag))
@@ -167,7 +171,7 @@ def write_and_update_xml(fptr, xml, cellid, blocks_and_values):
     return bytes_written, footer_loc
 
 
-def add_reconstructed_velocity_space(dst, cellid, blocks_and_values):
+def add_reconstructed_velocity_space(dst, cellid, blocks_and_values,bpc):
     import struct
 
     f = open(dst, "r+b")
@@ -179,7 +183,7 @@ def add_reconstructed_velocity_space(dst, cellid, blocks_and_values):
     footer_str = footer_str.replace("BLOCK", "_LOCK")
     xml = ET.fromstring(footer_str)
     f.seek(offset)  # go back to write position (before the VLSV tag)
-    bytes_written, footer_loc = write_and_update_xml(f, xml, cellid, blocks_and_values)
+    bytes_written, footer_loc = write_and_update_xml(f, xml, cellid, blocks_and_values,bpc)
     f.seek(8)
     # Update footer location
     np.array(footer_loc, dtype=np.uint64).tofile(f)
@@ -188,8 +192,13 @@ def add_reconstructed_velocity_space(dst, cellid, blocks_and_values):
 
 def reconstruct_vdfs(file):
     f = pt.vlsvfile.VlsvReader(file)
+    size = f.get_velocity_mesh_size()
     cids = np.array(np.arange(1, 1 + np.prod(f.get_spatial_mesh_size())), dtype=int)
     print("Cell IDs to replace =", cids)
+    a=[]
+    b=[]
+    c=[]
+
     for cid in cids:
         print(f"Extracting CellID {cid}")
         len = 25
@@ -207,7 +216,6 @@ def reconstruct_vdfs(file):
         blocks = np.arange(0, np.prod(size), dtype=np.int32)
         reconstructed = np.array(reconstructed, dtype=np.float32)
         block_data = np.zeros((np.prod(size), np.power(WID, 3)), dtype=np.float32)
-
         for blockid in blocks:
             block_coords = f.get_velocity_block_coordinates(blockid)
             rx = int(np.floor((block_coords[0] - extents[0]) / dv))
@@ -221,13 +229,113 @@ def reconstruct_vdfs(file):
                             rz + bz, ry + by, rx + bx
                         ]
 
-        output_file = clone_file(f, "output.vlsv")
-        bytes_written = add_reconstructed_velocity_space(
-            output_file, 1, [blocks, block_data]
-        )
-        beautyfied = "{:.4f}".format(bytes_written / (1024 * 1024 * 1024))
-        print(f"Wrote  {beautyfied} GB to {output_file}!")
+        a.append(cid)
+        b.append(blocks)
+        c.append(block_data)
+    a=np.asarray(a)
+    b=np.asarray(b)
+    c=np.asarray(c)
+    print(a.shape)
+    print(b.shape)
+    print(c.shape)
+    output_file = clone_file(f, "output.vlsv")
+    bytes_written = add_reconstructed_velocity_space(
+        output_file, a, [b, c],np.prod(size)
+    )
+    beautyfied = "{:.4f}".format(bytes_written / (1024 * 1024 * 1024))
+    print(f"Wrote  {beautyfied} GB to {output_file}!")
+
+
+    
+def reconstruct_vdf_mpi(f,cid,len):
+
+    print(f"Extracting CellID {cid}")
+    _, reconstructed = reconstruct_cid(f, cid, len)
+    extents = f.get_velocity_mesh_extent()
+    size = f.get_velocity_mesh_size()
+    dv = f.get_velocity_mesh_dv()
+    assert dv[0] == dv[1] == dv[2]
+    dv = dv[0]
+    WID = f.get_WID()
+
+    blocks = np.arange(0, np.prod(size), dtype=np.int32)
+    reconstructed = np.array(reconstructed, dtype=np.float32)
+    block_data = np.zeros((np.prod(size), np.power(WID, 3)), dtype=np.float32)
+    for blockid in blocks:
+        block_coords = f.get_velocity_block_coordinates(blockid)
+        rx = int(np.floor((block_coords[0] - extents[0]) / dv))
+        ry = int(np.floor((block_coords[1] - extents[1]) / dv))
+        rz = int(np.floor((block_coords[2] - extents[2]) / dv))
+        for bx in range(0, WID):
+            for by in range(0, WID):
+                for bz in range(0, WID):
+                    localid = bz * WID**2 + by * WID + bx
+                    block_data[blockid, localid] = reconstructed[
+                        rz + bz, ry + by, rx + bx
+                    ]
+
+
+    return blocks,block_data
+
+
+def reconstruct_vdfs_mpi(filename, len, sparsity):
+    from mpi4py import MPI
+    if __name__ == "__main__":
+        world_comm = MPI.COMM_WORLD
+        world_size = world_comm.Get_size()
+        my_rank = world_comm.Get_rank()
+        f = pt.vlsvfile.VlsvReader(filename)
+        WID=f.get_WID();
+        size = f.get_velocity_mesh_size()
+        total_cids = None
+        num_cids=None
+        if my_rank == 0:
+            cids = np.array(np.arange(1, 1 + np.prod(f.get_spatial_mesh_size())), dtype=int)
+            num_cids=cids.size
+            total_cids = np.array_split(cids, world_size)
+        world_comm.barrier()
+        local_cids = world_comm.scatter(total_cids, root=0)
+        print(f"Rank {my_rank} has {local_cids.size} cids!")
+        world_comm.barrier()
+
+        local_blocks = []
+        local_block_data = []
+        local_reconstructed_cids = []
+        for cid in local_cids:
+            a, b = reconstruct_vdf_mpi( f,cid, len)
+            local_reconstructed_cids.append(cid)
+            local_blocks.append(a)
+            local_block_data.append(b)
+            # break;
+
+        world_comm.barrier()
+        global_reconstructed_cids=world_comm.gather(local_reconstructed_cids,root=0)
+        global_blocks=world_comm.gather(local_blocks,root=0)
+        global_block_data=world_comm.gather(local_block_data,root=0)
+        world_comm.barrier()
+        if (my_rank==0):
+            global_reconstructed_cids=np.asarray(global_reconstructed_cids).flatten()
+            global_blocks=np.asarray(global_blocks).reshape(num_cids,-1)
+            global_block_data=np.asarray(global_block_data).reshape(num_cids,-1,WID*WID*WID)
+            print(global_reconstructed_cids.shape)
+            print(global_blocks.shape)
+            print(global_block_data.shape)
+
+            output_file = clone_file(f, "output.vlsv")
+            bytes_written = add_reconstructed_velocity_space(
+                output_file, global_reconstructed_cids, [global_blocks, global_block_data],np.prod(size)
+            )
+            beautyfied = "{:.4f}".format(bytes_written / (1024 * 1024 * 1024))
+            print(f"Wrote  {beautyfied} GB to {output_file}!")
+        world_comm.barrier()
+    return
 
 
 file = sys.argv[1]
-reconstruct_vdfs(file)
+sparsity = 1e-16
+f = pt.vlsvfile.VlsvReader(file)
+reconstruct_vdfs_mpi(file, 25, sparsity)
+
+
+# file = sys.argv[1]
+# reconstruct_vdfs(file)
