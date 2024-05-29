@@ -92,11 +92,11 @@ def write_and_update_xml(fptr, xml, cellid, blocks_and_values, bpc):
         fptr.tell(),
     )
     xml.append(ET.fromstring(tag))
-    data = np.atleast_1d(blocks_per_cell)
+    data = np.atleast_1d(blocks_per_cell).astype(np.uint32)
     data.tofile(fptr)
     bytes_written += data.nbytes
 
-    data = np.atleast_1d(blocks_and_values[0])
+    data = np.atleast_1d(blocks_and_values[0][:]).astype(np.uint32)
     a, b = np.shape(data)
     tag = generate_tag(
         "BLOCKIDS",
@@ -113,7 +113,7 @@ def write_and_update_xml(fptr, xml, cellid, blocks_and_values, bpc):
     data.tofile(fptr)
     bytes_written += data.nbytes
 
-    data = np.atleast_1d(blocks_and_values[1])
+    data = np.atleast_1d(blocks_and_values[1][:])
     a, b, c = np.shape(data)
     tag = generate_tag(
         "BLOCKVARIABLE",
@@ -126,9 +126,9 @@ def write_and_update_xml(fptr, xml, cellid, blocks_and_values, bpc):
         fptr.tell(),
     )
     xml.append(ET.fromstring(tag))
-    data = np.atleast_1d(blocks_and_values[1])
     print(f"Writing block data {np.shape(data)} ,min={np.min(data)}, max= {np.max(data)}")
     data.tofile(fptr)
+    print(data.dtype)
     bytes_written += data.nbytes
 
     # Update footer xml tag
@@ -321,8 +321,4 @@ if __name__ == "__main__":
 
     reconstruct_vdfs_mpi(
         file, boxed, sparsity, reconstruct_cid_fourier_mlp, "output_fourier_mlp.vlsv"
-    )
-
-    reconstruct_vdfs_mpi(
-        file, boxed, sparsity, reconstruct_cid_mlp, "output_mlp.vlsv"
     )
