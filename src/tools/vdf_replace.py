@@ -161,6 +161,143 @@ def add_reconstructed_velocity_space(dst, cellid, blocks_and_values, bpc):
     return bytes_written
 
 
+def add_reconstructed_velocity_space_mpi(dst, cellid, blocks_and_values, bpc):
+    """
+    dst: destination file
+    cellid: list of cellids
+    blocks_and_values: list of blocks and values [block1..., block1_values...,]
+    bpc: blocks per cell which is constant for all cells as we do not sparsify here
+    """
+    world_comm = MPI.COMM_WORLD
+    world_size = world_comm.Get_size()
+    my_rank = world_comm.Get_rank()
+
+
+    #Collectively open and write our data
+    buffer = np.zeros(8, dtype=np.byte)
+    f = MPI.File.Open(world_comm, dst,  MPI.MODE_RDWR )
+    fsize = f.Get_size()
+
+    #Footer offset
+    f.Read_at(8,buffer)
+    (footer_offset,) = struct.unpack("Q",buffer)  # VLSV footer
+
+    
+    #Footer
+    buffer=np.zeros(fsize-footer_offset,dtype=np.byte)
+    f.Read_at(footer_offset,buffer)
+    footer_str=buffer.tobytes().decode('utf-8')
+    footer_str = footer_str.replace("BLOCK", "_LOCK")
+    xml = ET.fromstring(footer_str)
+
+    #CELLIDS
+    total_cids=world_comm.gather(len(cellid), root=0)
+    total_cids=world_comm.bcast(total_cids,root=0)
+    curr_offset=footer_offset
+    if (my_rank==0):
+
+        tag = generate_tag(
+            "CELLSWITHBLOCKS",
+            np.uint64(np.sum(total_cids)),
+            8,
+            "uint",
+            "SpatialGrid",
+            "proton",
+            1,
+            footer_offset,
+        )
+        xml.append(ET.fromstring(tag))
+
+    #Offsets
+    byte_offset=8*np.sum(total_cids[0:my_rank]);
+    my_offset=int(curr_offset+byte_offset)
+    data=np.atleast_1d(cellid).astype(np.uint64)
+    f.Write_at_all(my_offset,data)
+    bytes_written=8*np.sum(total_cids)
+    curr_offset+=bytes_written
+
+   
+    #Blocks per Cell
+    blocks_per_cell = np.array([cellid])
+    blocks_per_cell[:] = bpc
+    if(my_rank==0):
+        tag = generate_tag(
+        "BLOCKSPERCELL",
+        np.uint64(np.sum(total_cids)),
+        4,
+        "uint",
+        "SpatialGrid",
+        "proton",
+        1,
+        np.uint64(curr_offset),
+        )
+        xml.append(ET.fromstring(tag))
+
+    byte_offset=4*np.sum(total_cids[0:my_rank]);
+    my_offset=int(curr_offset+byte_offset)
+    data=np.atleast_1d(blocks_per_cell).astype(np.uint32)
+    f.Write_at_all(my_offset,data)
+    bytes_written=4*np.sum(total_cids)
+    curr_offset+=bytes_written
+
+    
+    #BlockIDs
+    if(my_rank==0):
+        tag = generate_tag(
+            "BLOCKIDS",
+            np.uint64(bpc*np.sum(total_cids)),
+            4,
+            "uint",
+            "SpatialGrid",
+            "proton",
+            1,
+            np.uint64(curr_offset),
+        )
+        xml.append(ET.fromstring(tag))    
+
+    byte_offset=4*np.sum(total_cids[0:my_rank])*bpc;
+    my_offset=int(curr_offset+byte_offset)
+    data=np.atleast_1d(blocks_and_values[0]).astype(np.uint32)
+    f.Write_at_all(my_offset,data)
+    bytes_written=4*np.sum(total_cids)*bpc
+    curr_offset+=bytes_written
+
+    if (my_rank==0):
+        tag = generate_tag(
+            "BLOCKVARIABLE",
+            np.uint64(bpc*np.sum(total_cids)),
+            4,
+            "float",
+            "SpatialGrid",
+            "proton",
+            64,
+            np.uint64(curr_offset),
+        )
+        xml.append(ET.fromstring(tag))        
+
+    byte_offset=4*np.sum(total_cids[0:my_rank])*bpc*64;
+    my_offset=int(curr_offset+byte_offset)
+    data=np.atleast_1d(blocks_and_values[1]).astype(np.float32)
+    f.Write_at_all(my_offset,data)
+    bytes_written=4*np.sum(total_cids)*bpc*64
+    curr_offset+=bytes_written
+    f.Close()
+    world_comm.barrier()
+
+    if (my_rank==0):
+        curr_offset=np.uint64(curr_offset)
+        xml_footer_indent(xml)
+        xml_data=ET.tostring(xml)
+        f = open(dst, "r+b")
+        f.seek(curr_offset)
+        f.write(xml_data)
+        f.seek(8)
+        np.array(curr_offset, dtype=np.uint64).tofile(f)
+        f.close()
+
+    return
+
+
 def reconstruct_vdf(f, cid, len, reconstruction_method):
     """
     f: VlsvReader Object
@@ -222,37 +359,55 @@ def reconstruct_vdfs_mpi(filename, len, sparsity, reconstruction_method, output_
     local_blocks = []
     local_block_data = []
     local_reconstructed_cids = []
+
+    cnt = 0
     for cid in local_cids:
         a, b = reconstruct_vdf(f, cid, len, reconstruction_method)
         local_reconstructed_cids.append(cid)
         local_blocks.append(a)
         local_block_data.append(b)
+        cnt += 1
+        # if cnt >= 1:
+          # break
 
     world_comm.barrier()
     global_reconstructed_cids = world_comm.gather(local_reconstructed_cids, root=0)
-    global_blocks = world_comm.gather(local_blocks, root=0)
-    global_block_data = world_comm.gather(local_block_data, root=0)
-    world_comm.barrier()
-    if my_rank == 0:
-        global_reconstructed_cids = np.asarray(global_reconstructed_cids).flatten()
-        global_blocks = np.asarray(global_blocks).reshape(num_cids, -1)
-        global_block_data = np.asarray(global_block_data).reshape(
-            num_cids, -1, WID * WID * WID
-        )
+    if (my_rank==0):
         output_file = clone_file(f, output_file_name)
-        bytes_written = add_reconstructed_velocity_space(
-            output_file,
-            global_reconstructed_cids,
-            [global_blocks, global_block_data],
-            np.prod(size),
-        )
-        beautyfied = "{:.4f}".format(bytes_written / (1024 * 1024 * 1024))
-        print(f"Wrote  {beautyfied} GB to {output_file}!")
+
+    world_comm.barrier()
+    add_reconstructed_velocity_space_mpi(
+        output_file_name,
+        local_reconstructed_cids,
+        [local_blocks, local_block_data],
+        np.prod(size),
+    )
+
+    world_comm.barrier()
+
+    # global_blocks = world_comm.gather(local_blocks, root=0)
+    # global_block_data = world_comm.gather(local_block_data, root=0)
+    # world_comm.barrier()
+    # if my_rank == 0:
+    #     global_reconstructed_cids = np.asarray(global_reconstructed_cids).flatten()
+    #     global_blocks = np.asarray(global_blocks).reshape(num_cids, -1)
+    #     global_block_data = np.asarray(global_block_data).reshape(
+    #         num_cids, -1, WID * WID * WID
+    #     )
+    #     output_file = clone_file(f, output_file_name)
+    #     bytes_written = add_reconstructed_velocity_space(
+    #         output_file,
+    #         global_reconstructed_cids,
+    #         [global_blocks, global_block_data],
+    #         np.prod(size),
+    #     )
+    #     beautyfied = "{:.4f}".format(bytes_written / (1024 * 1024 * 1024))
+    #     print(f"Wrote  {beautyfied} GB to {output_file}!")
     world_comm.barrier()
     return
 
 
-#MLP with fourier features
+# MLP with fourier features
 def reconstruct_cid_fourier_mlp(f, cid, len):
     order = 12
     epochs = 1
@@ -279,7 +434,8 @@ def reconstruct_cid_fourier_mlp(f, cid, len):
     ] = reconstructed_vdf
     return cid, np.array(final_vdf, dtype=np.float32)
 
-#MLP
+
+# MLP
 def reconstruct_cid_mlp(f, cid, len):
     order = 0
     epochs = 1
