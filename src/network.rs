@@ -107,8 +107,8 @@ pub mod network {
                 delta: DMatrix::<T>::zeros(batch_size, neurons),
                 v: DMatrix::<T>::zeros(input_size, neurons),
                 m: DMatrix::<T>::zeros(input_size, neurons),
-                neurons: neurons,
-                batch_size: batch_size,
+                neurons,
+                batch_size,
             }
         }
 
@@ -136,7 +136,6 @@ pub mod network {
 
         pub fn elu_mut(val: &mut T) {
             if *val >= T::zero() {
-                return;
             } else {
                 let alpha: T = T::one();
                 *val = alpha * ((*val).exp() - T::one())
@@ -334,8 +333,8 @@ pub mod network {
                 m_thread_layers: thread_layers_object,
                 input_data: input.clone(),
                 output_data: output.clone(),
-                batch_size: batch_size,
-                neurons_per_layer: neurons_per_layer,
+                batch_size,
+                neurons_per_layer,
             }
         }
 
@@ -357,17 +356,6 @@ pub mod network {
             net
         }
 
-        pub fn new_from_file_with_batchsize(
-            filename: &str,
-            batch_size: usize,
-        ) -> Result<Self, Box<dyn std::error::Error>> {
-            let mut file = File::open(filename)?;
-            let mut buffer: Vec<u8> = Vec::new();
-            let bytes_read = file.read_to_end(&mut buffer)?;
-            let footer = buffer.split_off(buffer.len() - TAG.len());
-            todo!();
-        }
-
         pub fn randomize_he(&mut self) {
             let mut rng = rand::thread_rng();
             for i in 1..self.layers.len() {
@@ -378,8 +366,8 @@ pub mod network {
                     *elem = T::from(normal.sample(&mut rng));
                 };
 
-                self.layers[i].w.apply(|x| he(x));
-                self.layers[i].b.apply(|x| he(x));
+                self.layers[i].w.apply(&mut he);
+                self.layers[i].b.apply(he);
             }
         }
 
@@ -394,14 +382,14 @@ pub mod network {
                     *elem = T::from(distribution.sample(&mut rng));
                 };
 
-                self.layers[i].w.apply(|x| xavier(x));
-                self.layers[i].b.apply(|x| xavier(x));
+                self.layers[i].w.apply(&mut xavier);
+                self.layers[i].b.apply(xavier);
             }
         }
 
         fn forward_matrix(&mut self, input: &DMatrix<T>) {
             //Layer 0 forwards the actual input
-            self.layers[0].forward_matrix(&input);
+            self.layers[0].forward_matrix(input);
             //Following layers forard their previouse's layer .a matrix
             for i in 1..self.layers.len() {
                 let inp = self.layers[i - 1].a.clone();
@@ -411,7 +399,7 @@ pub mod network {
 
         fn forward_all(layers: &mut Vec<FullyConnectedLayer<T>>, input: &DMatrix<T>) {
             //Layer 0 forwards the actual input
-            layers[0].forward_matrix(&input);
+            layers[0].forward_matrix(input);
             //Following layers forard their previouse's layer .a matrix
             for i in 1..layers.len() {
                 let inp = layers[i - 1].a.clone();
@@ -481,7 +469,7 @@ pub mod network {
             running_cost
         }
 
-        pub fn train_minibatch_serial(&mut self, lr: T, epoch: usize) -> T {
+        pub fn train_minibatch_serial(&mut self, lr: T, _epoch: usize) -> T {
             let ncols = self.input_data.ncols();
             let num_samples = self.input_data.nrows() as f32;
             let ncols_out = self.output_data.ncols();
@@ -624,7 +612,7 @@ pub mod network {
                 let mut v_hat = &l.v / (T::one() - T::powi(ADAM_BETA2.into(), iteration as i32));
                 v_hat.apply(|x| *x = T::sqrt(*x));
                 v_hat.add_scalar_mut(ADAM_EPS.into());
-                let update = ((&m_hat).component_div(&v_hat)).scale(lr);
+                let update = (m_hat.component_div(&v_hat)).scale(lr);
                 l.w -= update;
                 l.b -= l.db.scale(lr);
             }
@@ -713,7 +701,7 @@ pub mod network {
         }
 
         pub fn eval(&mut self, sample: &DMatrix<T>, output_buffer: &mut DMatrix<T>) {
-            self.forward_matrix(&sample);
+            self.forward_matrix(sample);
             assert_eq!(
                 output_buffer.ncols(),
                 self.output_data.ncols(),
@@ -751,71 +739,6 @@ pub mod network {
             total_size
         }
 
-        pub fn get_state(&self) -> Vec<u8> {
-            assert!(
-                std::mem::size_of::<T>() == std::mem::size_of::<f64>(),
-                "Saving f32 networks is not supported yet"
-            );
-            //Hardcoded 1 below is the 8 bytes we need to store the number of layers
-            let total_bytes = self.calculate_total_bytes()
-                + std::mem::size_of::<usize>() * (self.layers.len() + 1)
-                + TAG.len();
-            let mut data: Vec<u8> = vec![];
-            data.reserve_exact(total_bytes);
-            let num_layers = self.layers.len();
-            let bytes: [u8; std::mem::size_of::<usize>()] = num_layers.to_ne_bytes();
-            data.extend_from_slice(&bytes);
-            for l in self.layers.iter() {
-                let n = l.neurons;
-                let bytes: [u8; std::mem::size_of::<usize>()] = n.to_ne_bytes();
-                data.extend_from_slice(&bytes);
-
-                //Weights
-                for j in 0..l.w.ncols() {
-                    for i in 0..l.w.nrows() {
-                        let bytes: [u8; std::mem::size_of::<f64>()] =
-                            unsafe { std::mem::transmute(&l.w[(i, j)]) };
-                        data.extend_from_slice(&bytes);
-                    }
-                }
-
-                //Biases
-                for j in 0..l.b.ncols() {
-                    for i in 0..l.b.nrows() {
-                        let bytes: [u8; std::mem::size_of::<f64>()] =
-                            unsafe { std::mem::transmute(&l.b[(i, j)]) };
-                        data.extend_from_slice(&bytes);
-                    }
-                }
-            }
-
-            //Also append the tag which is 8 bytes;
-            let bytes: [u8; TAG.len()] = unsafe { std::mem::transmute(&TAG) };
-            data.extend_from_slice(&bytes);
-            println!("Bytes serialized {}/{}.", data.len(), total_bytes);
-            assert!(
-                data.len() == total_bytes,
-                "Bytes mismatch during get_state()!"
-            );
-            data
-        }
-
-        fn extract_state(filename: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-            todo!();
-        }
-
-        fn compress_state(state: &Vec<u8>) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-            todo!();
-        }
-
-        pub fn save(&self, filename: &str) {
-            println!("Storing state to {}", filename);
-            let bytes: Vec<u8> = self.get_state();
-            let mut file = File::create(filename).expect("Failed to create file");
-            file.write_all(&bytes)
-                .expect("Failed to write state to file!");
-        }
-
         fn shuffle_network_data(&mut self) {
             let mut vec_in: Vec<Vec<T>> = self
                 .input_data
@@ -851,6 +774,311 @@ pub mod network {
                 DMatrix::from_fn(vec_out.len() as _, vec_out[0].len() as _, |i, j| {
                     vec_out[i][j]
                 });
+        }
+    }
+
+    pub trait NetworkIO<T> {
+        fn get_network_state(&self) -> Vec<u8>;
+        fn new_from_file_with_batchsize(
+            filename: &str,
+            input_size: usize,
+            output_size: usize,
+            batch_size: usize,
+        ) -> Result<Network<T>, Box<dyn std::error::Error>>;
+        fn save(&self, filename: &str) {
+            println!("Storing state to {}", filename);
+            let bytes: Vec<u8> = self.get_network_state();
+            let mut file = File::create(filename).expect("Failed to create file");
+            file.write_all(&bytes)
+                .expect("Failed to write state to file!");
+        }
+    }
+
+    impl NetworkIO<f32> for Network<f32> {
+        fn get_network_state(&self) -> Vec<u8> {
+            //Hardcoded 1 below is the 8 bytes we need to store the number of layers
+            let total_bytes = self.calculate_total_bytes()
+                + std::mem::size_of::<usize>() * (self.layers.len() + 1)
+                + TAG.len();
+            let mut data: Vec<u8> = vec![];
+            data.reserve_exact(total_bytes);
+            let num_layers = self.layers.len();
+            let bytes: [u8; std::mem::size_of::<usize>()] = num_layers.to_ne_bytes();
+            data.extend_from_slice(&bytes);
+            for l in self.layers.iter() {
+                let n = l.neurons;
+                let bytes: [u8; std::mem::size_of::<usize>()] = n.to_ne_bytes();
+                data.extend_from_slice(&bytes);
+
+                //Weights
+                for j in 0..l.w.ncols() {
+                    for i in 0..l.w.nrows() {
+                        // let bytes: [u8; std::mem::size_of::<f64>()] =
+                        // unsafe { std::mem::transmute(&l.w[(i, j)]) };
+                        let val: f32 = l.w[(i, j)];
+                        let bytes: [u8; 4] = val.to_ne_bytes();
+                        data.extend_from_slice(&bytes);
+                    }
+                }
+
+                //Biases
+                for j in 0..l.b.ncols() {
+                    for i in 0..l.b.nrows() {
+                        let val: f32 = l.b[(i, j)];
+                        let bytes: [u8; 4] = val.to_ne_bytes();
+                        data.extend_from_slice(&bytes);
+                    }
+                }
+            }
+
+            //Also append the tag which is 8 bytes;
+            let bytes: [u8; TAG.len()] = unsafe { std::mem::transmute(&TAG) };
+            data.extend_from_slice(&bytes);
+            println!("Bytes serialized {}/{}.", data.len(), total_bytes);
+            assert!(
+                data.len() == total_bytes,
+                "Bytes mismatch during get_state()!"
+            );
+            data
+        }
+
+        fn new_from_file_with_batchsize(
+            filename: &str,
+            input_size: usize,
+            output_size: usize,
+            batch_size: usize,
+        ) -> Result<Network<f32>, Box<dyn std::error::Error>> {
+            let mut file = File::open(filename)?;
+            let mut buffer: Vec<u8> = Vec::new();
+
+            let _bytes_read = file.read_to_end(&mut buffer)?;
+            let mut offset = 0;
+            let num_layers = usize::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
+            offset += 8;
+            let n = usize::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
+            offset += 8;
+            let fake_input = DMatrix::<f32>::zeros(1, input_size);
+            let fake_output = DMatrix::<f32>::zeros(1, output_size);
+            let mut net = Network::<f32>::new(
+                input_size,
+                output_size,
+                num_layers,
+                n,
+                &fake_input,
+                &fake_output,
+                batch_size,
+            );
+
+            //First layer
+            //Weights
+            let l = &mut net.layers[0];
+            for j in 0..l.w.ncols() {
+                for i in 0..l.w.nrows() {
+                    let val = f32::from_ne_bytes(buffer[offset..(offset + 4)].try_into().unwrap());
+                    l.w[(i, j)] = val;
+                    offset += 4;
+                }
+            }
+
+            //Biases
+            for j in 0..l.b.ncols() {
+                for i in 0..l.b.nrows() {
+                    let val = f32::from_ne_bytes(buffer[offset..(offset + 4)].try_into().unwrap());
+                    l.b[(i, j)] = val;
+                    offset += 4;
+                }
+            }
+
+            //Internals
+            for key in 1..num_layers - 1 {
+                let _n = usize::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
+                offset += 8;
+                let l = &mut net.layers[key];
+                for j in 0..l.w.ncols() {
+                    for i in 0..l.w.nrows() {
+                        let val =
+                            f32::from_ne_bytes(buffer[offset..(offset + 4)].try_into().unwrap());
+                        l.w[(i, j)] = val;
+                        offset += 4;
+                    }
+                }
+
+                //Biases
+                for j in 0..l.b.ncols() {
+                    for i in 0..l.b.nrows() {
+                        let val =
+                            f32::from_ne_bytes(buffer[offset..(offset + 4)].try_into().unwrap());
+                        l.b[(i, j)] = val;
+                        offset += 4;
+                    }
+                }
+            }
+
+            //Last layer
+            offset += 8;
+            let l = &mut net.layers.last_mut().unwrap();
+            for j in 0..l.w.ncols() {
+                for i in 0..l.w.nrows() {
+                    let val = f32::from_ne_bytes(buffer[offset..(offset + 4)].try_into().unwrap());
+                    l.w[(i, j)] = val;
+                    offset += 4;
+                }
+            }
+
+            //Biases
+            for j in 0..l.b.ncols() {
+                for i in 0..l.b.nrows() {
+                    let val = f32::from_ne_bytes(buffer[offset..(offset + 4)].try_into().unwrap());
+                    l.b[(i, j)] = val;
+                    offset += 4;
+                }
+            }
+            println!("Read {}/{}", offset + 8, buffer.len());
+            Ok(net)
+        }
+    }
+
+    impl NetworkIO<f64> for Network<f64> {
+        fn get_network_state(&self) -> Vec<u8> {
+            //Hardcoded 1 below is the 8 bytes we need to store the number of layers
+            let total_bytes = self.calculate_total_bytes()
+                + std::mem::size_of::<usize>() * (self.layers.len() + 1)
+                + TAG.len();
+            let mut data: Vec<u8> = vec![];
+            data.reserve_exact(total_bytes);
+            let num_layers = self.layers.len();
+            let bytes: [u8; std::mem::size_of::<usize>()] = num_layers.to_ne_bytes();
+            data.extend_from_slice(&bytes);
+            for l in self.layers.iter() {
+                let n = l.neurons;
+                let bytes: [u8; std::mem::size_of::<usize>()] = n.to_ne_bytes();
+                data.extend_from_slice(&bytes);
+
+                //Weights
+                for j in 0..l.w.ncols() {
+                    for i in 0..l.w.nrows() {
+                        // let bytes: [u8; std::mem::size_of::<f64>()] =
+                        // unsafe { std::mem::transmute(&l.w[(i, j)]) };
+                        let val: f64 = l.w[(i, j)].try_into().unwrap();
+                        let bytes: [u8; 8] = val.to_ne_bytes();
+                        data.extend_from_slice(&bytes);
+                    }
+                }
+
+                //Biases
+                for j in 0..l.b.ncols() {
+                    for i in 0..l.b.nrows() {
+                        let val: f64 = l.b[(i, j)].try_into().unwrap();
+                        let bytes: [u8; 8] = val.to_ne_bytes();
+                        data.extend_from_slice(&bytes);
+                    }
+                }
+            }
+
+            //Also append the tag which is 8 bytes;
+            let bytes: [u8; TAG.len()] = unsafe { std::mem::transmute(&TAG) };
+            data.extend_from_slice(&bytes);
+            println!("Bytes serialized {}/{}.", data.len(), total_bytes);
+            assert!(
+                data.len() == total_bytes,
+                "Bytes mismatch during get_state()!"
+            );
+            data
+        }
+
+        fn new_from_file_with_batchsize(
+            filename: &str,
+            input_size: usize,
+            output_size: usize,
+            batch_size: usize,
+        ) -> Result<Network<f64>, Box<dyn std::error::Error>> {
+            let mut file = File::open(filename)?;
+            let mut buffer: Vec<u8> = Vec::new();
+
+            let _bytes_read = file.read_to_end(&mut buffer)?;
+            let mut offset = 0;
+            let num_layers = usize::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
+            offset += 8;
+            let n = usize::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
+            offset += 8;
+            let fake_input = DMatrix::<f64>::zeros(1, input_size);
+            let fake_output = DMatrix::<f64>::zeros(1, output_size);
+            let mut net = Network::<f64>::new(
+                input_size,
+                output_size,
+                num_layers,
+                n,
+                &fake_input,
+                &fake_output,
+                batch_size,
+            );
+
+            //First layer
+            //Weights
+            let l = &mut net.layers[0];
+            for j in 0..l.w.ncols() {
+                for i in 0..l.w.nrows() {
+                    let val = f64::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
+                    l.w[(i, j)] = val.try_into().unwrap();
+                    offset += 8;
+                }
+            }
+
+            //Biases
+            for j in 0..l.b.ncols() {
+                for i in 0..l.b.nrows() {
+                    let val = f64::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
+                    l.b[(i, j)] = val.try_into().unwrap();
+                    offset += 8;
+                }
+            }
+
+            //Internals
+            for key in 1..num_layers - 1 {
+                let _n = usize::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
+                offset += 8;
+                let l = &mut net.layers[key];
+                for j in 0..l.w.ncols() {
+                    for i in 0..l.w.nrows() {
+                        let val =
+                            f64::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
+                        l.w[(i, j)] = val.try_into().unwrap();
+                        offset += 8;
+                    }
+                }
+
+                //Biases
+                for j in 0..l.b.ncols() {
+                    for i in 0..l.b.nrows() {
+                        let val =
+                            f64::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
+                        l.b[(i, j)] = val.try_into().unwrap();
+                        offset += 8;
+                    }
+                }
+            }
+
+            //Last layer
+            offset += 8;
+            let l = &mut net.layers.last_mut().unwrap();
+            for j in 0..l.w.ncols() {
+                for i in 0..l.w.nrows() {
+                    let val = f64::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
+                    l.w[(i, j)] = val.try_into().unwrap();
+                    offset += 8;
+                }
+            }
+
+            //Biases
+            for j in 0..l.b.ncols() {
+                for i in 0..l.b.nrows() {
+                    let val = f64::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
+                    l.b[(i, j)] = val.try_into().unwrap();
+                    offset += 8;
+                }
+            }
+            println!("Read {}/{}", offset + 8, buffer.len());
+            Ok(net)
         }
     }
 }
