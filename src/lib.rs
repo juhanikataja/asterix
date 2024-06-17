@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 mod network;
 use crate::network::network::Network;
+use crate::network::network::NetworkIO;
 use nalgebra::DMatrix;
 use ndarray::ArrayViewMut2;
 use ndarray::{Array, Array1, Array2, Array3, Axis};
@@ -155,7 +156,7 @@ fn compress_vdf(
     let vdf_size = vdf.len() * std::mem::size_of::<f64>();
     let net_size = net.calculate_total_bytes();
     let compression_ratio = vdf_size as f32 / net_size as f32;
-    let _bytes = net.get_state();
+    let _bytes = net.get_network_state();
     println!(
         "Done in {:.2} s.  Compression ratio = {:.2}x .",
         t_spent.as_secs_f32(),
