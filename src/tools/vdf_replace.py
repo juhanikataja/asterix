@@ -384,26 +384,6 @@ def reconstruct_vdfs_mpi(filename, len, sparsity, reconstruction_method, output_
     )
 
     world_comm.barrier()
-
-    # global_blocks = world_comm.gather(local_blocks, root=0)
-    # global_block_data = world_comm.gather(local_block_data, root=0)
-    # world_comm.barrier()
-    # if my_rank == 0:
-    #     global_reconstructed_cids = np.asarray(global_reconstructed_cids).flatten()
-    #     global_blocks = np.asarray(global_blocks).reshape(num_cids, -1)
-    #     global_block_data = np.asarray(global_block_data).reshape(
-    #         num_cids, -1, WID * WID * WID
-    #     )
-    #     output_file = clone_file(f, output_file_name)
-    #     bytes_written = add_reconstructed_velocity_space(
-    #         output_file,
-    #         global_reconstructed_cids,
-    #         [global_blocks, global_block_data],
-    #         np.prod(size),
-    #     )
-    #     beautyfied = "{:.4f}".format(bytes_written / (1024 * 1024 * 1024))
-    #     print(f"Wrote  {beautyfied} GB to {output_file}!")
-    world_comm.barrier()
     return
 
 
