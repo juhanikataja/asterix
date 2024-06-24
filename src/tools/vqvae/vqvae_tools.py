@@ -327,7 +327,7 @@ class VQVAE(nn.Module):
 
 #Reads in a VDF from cid CellID in a 3D  32 bit numpy array
 def extract_vdf(file, cid, box=-1):
-    assert cid > 0
+    assert cid > 0, f"CID  {cid}!" 
     f = pt.vlsvfile.VlsvReader(file)
     # -- read phase space density
     vcells = f.read_velocity_cells(cid)
@@ -370,7 +370,7 @@ def extract_vdf(file, cid, box=-1):
 
 
 def extract_vdf_reader(f, cid, box=-1):
-    assert cid > 0
+    assert cid > 0,f"CID requested= {cid}"
     # -- read phase space density
     vcells = f.read_velocity_cells(cid)
     keys = list(vcells.keys())
@@ -474,6 +474,29 @@ class MMapped_Vlasiator_DataSet():
         vdf_norm = (vdf - vdf.min())/(vdf.max() - vdf.min())
         return torch.tensor(vdf_norm).unsqueeze(0).to(self.device)
         
+class Lazy_Vlasiator_DataSet():
+#We can implement a queue mechanism here but for now this is open ended which means it could OOM. 
+    def __init__(self, cids,filename,device,box=25):
+        self.cids=cids
+        self.box=box
+        self.device=device
+        self.loaded_vdfs={} # hashmap over idx-index in list
+        self.vdfs=[]        # list used to cache the VDFs
+        self.f=pt.vlsvfile.VlsvReader(filename)
+
+    def __len__(self):
+        return len(self.cids)
+
+    def __getitem__(self, idx):
+        idx+=1
+        if not idx in self.loaded_vdfs:
+           vdf=extract_vdf_reader(self.f,idx,self.box)
+           vdf = (vdf - vdf.min())/(vdf.max() - vdf.min())
+           self.vdfs.append(vdf)
+           self.loaded_vdfs[idx]=len(self.vdfs)-1;
+        index=self.loaded_vdfs[idx]
+        vdf=self.vdfs[index]
+        return torch.tensor(vdf).unsqueeze(0).to(self.device)
 
 class ResidualStack(nn.Module):
     def __init__(self, num_hiddens, num_residual_layers, num_residual_hiddens):
