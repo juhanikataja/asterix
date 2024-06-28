@@ -6,10 +6,10 @@ import pytools as pt
 import numpy as np
 import vdf_extract
 import mlp_compress
-import tools
 from mpi4py import MPI
 import shutil
 import struct
+import compression_methods as cm
 
 
 def clone_file(vlsvReader, dst):
@@ -386,63 +386,6 @@ def reconstruct_vdfs_mpi(filename, len, sparsity, reconstruction_method, output_
     world_comm.barrier()
     return
 
-
-# MLP with fourier features
-def reconstruct_cid_fourier_mlp(f, cid, len):
-    order = 12
-    epochs = 1
-    layers = 2
-    neurons = 50
-    max_indexes, vdf = vdf_extract.extract(f, cid, len)
-    nx, ny, nz = np.shape(vdf)
-    assert nx == ny == nz
-    sparsity = 1.0e-16
-    if f.check_variable("MinValue"):
-        sparsity = f.read_variable("proton" + "/EffectiveSparsityThreshold", cid)
-    reconstructed_vdf = np.reshape(
-        mlp_compress.compress_mlp_from_vec(
-            vdf.flatten(), order, epochs, layers, neurons, nx, sparsity
-        ),
-        (nx, ny, nz),
-    )
-    mesh = f.get_velocity_mesh_size()
-    final_vdf = np.zeros((int(4 * mesh[0]), int(4 * mesh[1]), int(4 * mesh[2])))
-    final_vdf[
-        max_indexes[0] - len : max_indexes[0] + len,
-        max_indexes[1] - len : max_indexes[1] + len,
-        max_indexes[2] - len : max_indexes[2] + len,
-    ] = reconstructed_vdf
-    return cid, np.array(final_vdf, dtype=np.float32)
-
-
-# MLP
-def reconstruct_cid_mlp(f, cid, len):
-    order = 0
-    epochs = 1
-    layers = 2
-    neurons = 50
-    max_indexes, vdf = vdf_extract.extract(f, cid, len)
-    nx, ny, nz = np.shape(vdf)
-    assert nx == ny == nz
-    sparsity = 1.0e-16
-    if f.check_variable("MinValue"):
-        sparsity = f.read_variable("proton" + "/EffectiveSparsityThreshold", cid)
-    reconstructed_vdf = np.reshape(
-        mlp_compress.compress_mlp_from_vec(
-            vdf.flatten(), order, epochs, layers, neurons, nx, sparsity
-        ),
-        (nx, ny, nz),
-    )
-    mesh = f.get_velocity_mesh_size()
-    final_vdf = np.zeros((int(4 * mesh[0]), int(4 * mesh[1]), int(4 * mesh[2])))
-    final_vdf[
-        max_indexes[0] - len : max_indexes[0] + len,
-        max_indexes[1] - len : max_indexes[1] + len,
-        max_indexes[2] - len : max_indexes[2] + len,
-    ] = reconstructed_vdf
-    return cid, np.array(final_vdf, dtype=np.float32)
-
-
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print(len(sys.argv))
@@ -456,5 +399,42 @@ if __name__ == "__main__":
     boxed = 25
 
     reconstruct_vdfs_mpi(
-        file, boxed, sparsity, reconstruct_cid_fourier_mlp, "output_fourier_mlp.vlsv"
+        file, boxed, sparsity, cm.reconstruct_cid_fourier_mlp, "output_fourier_mlp.vlsv"
     )
+
+    reconstruct_vdfs_mpi(
+        file, boxed, sparsity, cm.reconstruct_cid_mlp, "output_mlp.vlsv"
+    )
+
+    reconstruct_vdfs_mpi(
+        file, boxed, sparsity, cm.reconstruct_cid_zfp, "output_zfp.vlsv"
+    )
+
+    reconstruct_vdfs_mpi(
+        file, boxed, sparsity, cm.reconstruct_cid_sph, "output_sph.vlsv"
+    )
+
+    reconstruct_vdfs_mpi(
+        file, boxed, sparsity, cm.reconstruct_cid_cnn, "output_cnn.vlsv"
+    )
+
+    reconstruct_vdfs_mpi(
+        file, boxed, sparsity, cm.reconstruct_cid_gmm, "output_gmm.vlsv"
+    )
+
+    reconstruct_vdfs_mpi(
+        file, boxed, sparsity, cm.reconstruct_cid_dwt, "output_dwt.vlsv"
+    )
+
+    # reconstruct_vdfs_mpi(
+    #   # file, boxed, sparsity, cm.reconstruct_cid_dct, "output_dct.vlsv"
+    # )
+
+    reconstruct_vdfs_mpi(
+      file, boxed, sparsity, cm.reconstruct_cid_pca, "output_pca.vlsv"
+    )
+
+    reconstruct_vdfs_mpi(
+      file, boxed, sparsity, cm.reconstruct_cid_oct, "output_oct.vlsv"
+    )
+
