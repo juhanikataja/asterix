@@ -10,6 +10,13 @@ from torch.utils.data import DataLoader
 from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.tensorboard import SummaryWriter
+from collections import OrderedDict
+import ctypes
+import multiprocessing as mp
+import numpy as np
+import torch
+from torch.utils.data import Dataset
+from stocaching import SharedCache
 
 
 class ResidualStack(nn.Module):
@@ -474,7 +481,7 @@ class MMapped_Vlasiator_DataSet():
         vdf_norm = (vdf - vdf.min())/(vdf.max() - vdf.min())
         return torch.tensor(vdf_norm).unsqueeze(0).to(self.device)
         
-class Lazy_Vlasiator_DataSet():
+class _Lazy_Vlasiator_DataSet():
 #We can implement a queue mechanism here but for now this is open ended which means it could OOM. 
     def __init__(self, cids,filename,device,box=25):
         self.cids=cids
@@ -490,13 +497,76 @@ class Lazy_Vlasiator_DataSet():
     def __getitem__(self, idx):
         idx+=1
         if not idx in self.loaded_vdfs:
+           print(f"Reading VDF {idx}")
            vdf=extract_vdf_reader(self.f,idx,self.box)
            vdf = (vdf - vdf.min())/(vdf.max() - vdf.min())
            self.vdfs.append(vdf)
            self.loaded_vdfs[idx]=len(self.vdfs)-1;
+        print(f"Reading cached VDF {idx}")
         index=self.loaded_vdfs[idx]
         vdf=self.vdfs[index]
-        return torch.tensor(vdf).unsqueeze(0).to(self.device)
+        return torch.tensor(vdf).unsqueeze(0)
+
+class __Lazy_Vlasiator_DataSet:
+    def __init__(self, cids, filename, device, box=25, cache_size=256):
+        self.cids = cids
+        self.box = box
+        self.device = device
+        self.cache_size = cache_size
+        self.loaded_vdfs = OrderedDict()  
+        self.f = pt.vlsvfile.VlsvReader(filename)
+
+    def __len__(self):
+        return len(self.cids)
+
+    def __getitem__(self, idx):
+        idx += 1
+        if idx not in self.loaded_vdfs:
+            #print(f"Reading VDF {idx} from disk")
+            #print("-------Keys---------")
+            #print(self.loaded_vdfs.keys())
+            #print("--------------------")
+            vdf = extract_vdf_reader(self.f, idx, self.box)
+            vdf = (vdf - vdf.min()) / (vdf.max() - vdf.min())
+            #if len(self.loaded_vdfs) >= self.cache_size:
+                #self.loaded_vdfs.popitem(last=False)
+            self.loaded_vdfs[idx] = vdf
+            return torch.tensor(vdf).unsqueeze(0)
+        #print(f"Reading VDF {idx} from cache")
+        vdf = self.loaded_vdfs[idx]
+        return torch.tensor(vdf).unsqueeze(0)
+
+class Lazy_Vlasiator_DataSet:
+    def __init__(self, cids, filename, device, box=25, cache_size=256,max_mem_gig=32):
+        super().__init__()
+        self.cids = cids
+        self.box = box
+        self.f = pt.vlsvfile.VlsvReader(filename)
+        dataset_len = len(cids) 
+        data_dims = (2*box,2*box,2*box) 
+
+        # initialize the cache
+        self.cache = SharedCache(
+            size_limit_gib=max_mem_gig,
+            dataset_len=dataset_len,
+            data_dims=data_dims,
+            dtype=torch.float32,
+        )
+
+    def __len__(self):
+        return len(self.cids)
+
+    def __getitem__(self, idx):
+        x = self.cache.get_slot(idx)
+        #Lazy adds to cache
+        if x is None:
+            vdf = extract_vdf_reader(self.f, idx+1, self.box)
+            vdf = (vdf - vdf.min()) / (vdf.max() - vdf.min())
+            x = torch.tensor(vdf)
+            self.cache.set_slot(idx, x) 
+        return x.unsqueeze(0)
+
+
 
 class ResidualStack(nn.Module):
     def __init__(self, num_hiddens, num_residual_layers, num_residual_hiddens):

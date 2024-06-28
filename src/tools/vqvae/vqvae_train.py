@@ -42,23 +42,22 @@ def main():
         "epsilon": 1e-5,
     }
     model = VQVAE(**model_args).to(device)
-    model = DDP(model, device_ids=[rank])
+    model = DDP(model)
 
-    batch_size = 128
-    epochs = 2
-    workers = 32
-    cids = np.arange(1, 2000)
-    #VDF_Data = Vlasiator_DataSet(cids, filename, device)
-    # VDF_Data = MMapped_Vlasiator_DataSet(cids,filename,device,box=25)
+    batch_size =128
+    epochs = 300000
+    workers =4
+    cids = np.arange(1, 2300)
     VDF_Data = Lazy_Vlasiator_DataSet(cids,filename,device,box=25)
     # train_sampler = DistributedSampler(VDF_Data, rank=rank,device_ids=[rank])
-    train_sampler = DistributedSampler(VDF_Data, rank=rank)
+    train_sampler = DistributedSampler(VDF_Data)
     train_loader = DataLoader(
         dataset=VDF_Data,
         batch_size=batch_size,
         sampler=train_sampler,
+        shuffle=False,
         num_workers=workers,
-        pin_memory=False
+        pin_memory=True
     )
 
     # Multiplier for commitment loss. See Equation (3) in "Neural Discrete Representation Learning"
@@ -107,7 +106,7 @@ def main():
                 total_train_loss = 0
                 total_recon_error = 0
                 n_train = 0
-            if (epoch%16==0 and global_rank==0):
+            if (epoch%10==0 and global_rank==0):
                 torch.save(model.state_dict(), f"model_state_{epoch}.ptch")
 
     if global_rank==0:
