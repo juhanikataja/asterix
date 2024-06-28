@@ -518,10 +518,24 @@ fn compress_sph(vdf_file: &str, degree: usize, size: usize) -> PyResult<Vec<f64>
     Ok(vdf_retval)
 }
 
+#[pyfunction]
+fn compress_sph_from_vec(mut vdf_vec: Vec<f64>, degree: usize, size: usize) -> PyResult<Vec<f64>> {
+    let vdf: Array3<f64> = Array3::<f64>::from_shape_vec((size, size, size), vdf_vec).unwrap();
+    let spherical_shells = vdf_to_spherical_shells(&vdf, NSHELLS, NTHETA, NPHI, size);
+    let (factors, coeffs) = decompose(&spherical_shells, degree);
+    let recosntructed = reconstruct(&factors, &coeffs, degree, NSHELLS, NTHETA, NPHI);
+    // let reconstructed_vdf = spherical_shells_to_vdf(&spherical_shells, NSHELLS, NTHETA, NPHI);
+    let reconstructed_vdf = spherical_shells_to_vdf(&recosntructed, NSHELLS, NTHETA, NPHI, size);
+    let vdf_retval = vdf_nd_array_to_vec(&reconstructed_vdf, size);
+    let ratio = calculate_compression_ratio(&vdf, &coeffs);
+    println!("Compression ratio = {}x .", ratio);
+    Ok(vdf.into_raw_vec())
+}
 #[pymodule]
 fn mlp_compress(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compress_mlp, m)?)?;
     m.add_function(wrap_pyfunction!(compress_mlp_from_vec, m)?)?;
     m.add_function(wrap_pyfunction!(compress_sph, m)?)?;
+    m.add_function(wrap_pyfunction!(compress_sph_from_vec, m)?)?;
     Ok(())
 }
