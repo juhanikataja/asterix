@@ -99,14 +99,27 @@ fn unscale_vdf(vdf: &mut Vec<f64>, sparse: f64) {
         .for_each(|x| *x = f64::max(f64::powf(10.0, -1.0 * *x), sparse));
 }
 
-fn normalize_vdf(vdf: &mut Vec<f64>) -> f64 {
-    let max_val = vdf.iter().max_by(|a, b| a.total_cmp(b)).unwrap().clone();
-    vdf.iter_mut().for_each(|x| *x = *x / max_val);
-    max_val
+// fn normalize_vdf(vdf: &mut Vec<f64>) -> f64 {
+//     let max_val = vdf.iter().max_by(|a, b| a.total_cmp(b)).unwrap().clone();
+//     vdf.iter_mut().for_each(|x| *x = *x / max_val);
+//     max_val
+// }
+
+// fn unnormalize_vdf(vdf: &mut Vec<f64>, max_val: f64) {
+//     vdf.iter_mut().for_each(|x| *x = *x * max_val);
+// }
+
+fn normalize_vdf(vdf: &mut Vec<f64>) -> (f64, f64) {
+    let min_val = *vdf.iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+    let max_val = *vdf.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+    let range = max_val - min_val;
+    vdf.iter_mut().for_each(|x| *x = (*x - min_val) / range);
+    (min_val, max_val)
 }
 
-fn unnormalize_vdf(vdf: &mut Vec<f64>, max_val: f64) {
-    vdf.iter_mut().for_each(|x| *x = *x * max_val);
+fn unnormalize_vdf(vdf: &mut Vec<f64>, min_val: f64, max_val: f64) {
+    let range = max_val - min_val;
+    vdf.iter_mut().for_each(|x| *x = *x * range + min_val);
 }
 
 fn reconstruct_vdf(net: &mut Network<f64>, vspace: &DMatrix<f64>) -> Vec<f64> {
@@ -474,7 +487,7 @@ fn compress_mlp(
     scale_vdf(&mut vdf, sparse);
     let norm = normalize_vdf(&mut vdf);
     let mut reconstructed = compress_vdf(&vdf, fourier_order, epochs, n_layers, n_neurons, size);
-    unnormalize_vdf(&mut reconstructed, norm);
+    unnormalize_vdf(&mut reconstructed, norm.0, norm.1);
     unscale_vdf(&mut reconstructed, sparse);
     Ok(reconstructed)
 }
@@ -492,7 +505,7 @@ fn compress_mlp_from_vec(
     scale_vdf(&mut vdf, sparse);
     let norm = normalize_vdf(&mut vdf);
     let mut reconstructed = compress_vdf(&vdf, fourier_order, epochs, n_layers, n_neurons, size);
-    unnormalize_vdf(&mut reconstructed, norm);
+    unnormalize_vdf(&mut reconstructed, norm.0, norm.1);
     unscale_vdf(&mut reconstructed, sparse);
     Ok(reconstructed)
 }
