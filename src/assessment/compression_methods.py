@@ -47,6 +47,7 @@ def reconstruct_cid_fourier_mlp(f, cid, len):
         max_indexes[1] - len : max_indexes[1] + len,
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
+    final_vdf[final_vdf<=sparsity]=0.0
     return cid, np.array(final_vdf, dtype=np.float32)
 
 # MLP
@@ -391,5 +392,4 @@ def reconstruct_cid_dct(f, cid, len):
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
     return cid, np.array(final_vdf, dtype=np.float32)
-
 

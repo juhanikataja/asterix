@@ -346,7 +346,8 @@ def reconstruct_vdfs_mpi(filename, len, sparsity, reconstruction_method, output_
     total_cids = None
     num_cids = None
     if my_rank == 0:
-        cids = np.array(np.arange(1, 1 + np.prod(f.get_spatial_mesh_size())), dtype=int)
+        # cids = np.array(np.arange(1, 1 + np.prod(f.get_spatial_mesh_size())), dtype=int)
+        cids=f.read(mesh="SpatialGrid",name="CellID", tag="VARIABLE")
         num_cids = cids.size
         assert num_cids % world_size == 0
         assert num_cids >= world_size
@@ -437,4 +438,3 @@ if __name__ == "__main__":
     reconstruct_vdfs_mpi(
       file, boxed, sparsity, cm.reconstruct_cid_oct, "output_oct.vlsv"
     )
-

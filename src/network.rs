@@ -245,18 +245,18 @@ pub mod network {
         }
 
         pub fn activate(val: T) -> T {
-            FullyConnectedLayer::tanh(val)
+            FullyConnectedLayer::elu(val)
         }
         pub fn activate_mut(val: &mut T) {
-            FullyConnectedLayer::tanh_mut(val);
+            FullyConnectedLayer::elu_mut(val);
         }
 
         pub fn activate_prime(val: T) -> T {
-            FullyConnectedLayer::tanh_prime(val)
+            FullyConnectedLayer::elu_prime(val)
         }
 
         pub fn activate_prime_mut(val: &mut T) {
-            FullyConnectedLayer::tanh_prime_mut(val);
+            FullyConnectedLayer::elu_prime_mut(val);
         }
 
         pub fn activate_prime_matrix(matrix: &DMatrix<T>) -> DMatrix<T> {

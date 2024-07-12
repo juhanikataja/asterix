@@ -94,11 +94,19 @@ fn scale_vdf(vdf: &mut Vec<f64>, sparse: f64) {
         .for_each(|x| *x = f64::abs(f64::log10(f64::max(*x, sparse))));
 }
 
-fn unscale_vdf(vdf: &mut Vec<f64>, sparse: f64) {
-    vdf.iter_mut()
-        .for_each(|x| *x = f64::max(f64::powf(10.0, -1.0 * *x), sparse));
+fn unscale_vdf(vdf: &mut Vec<f64>) {
+    vdf.iter_mut().for_each(|x| {
+        *x = f64::powf(10.0, -1.0 * *x);
+    });
 }
 
+fn sparsify(vdf: &mut Vec<f64>, sparse: f64) {
+    vdf.iter_mut().for_each(|x| {
+        if (*x - sparse).abs() <= std::f64::EPSILON {
+            *x = 0.0;
+        }
+    });
+}
 // fn normalize_vdf(vdf: &mut Vec<f64>) -> f64 {
 //     let max_val = vdf.iter().max_by(|a, b| a.total_cmp(b)).unwrap().clone();
 //     vdf.iter_mut().for_each(|x| *x = *x / max_val);
@@ -506,7 +514,8 @@ fn compress_mlp_from_vec(
     let norm = normalize_vdf(&mut vdf);
     let mut reconstructed = compress_vdf(&vdf, fourier_order, epochs, n_layers, n_neurons, size);
     unnormalize_vdf(&mut reconstructed, norm.0, norm.1);
-    unscale_vdf(&mut reconstructed, sparse);
+    unscale_vdf(&mut reconstructed);
+    sparsify(&mut reconstructed, sparse);
     Ok(reconstructed)
 }
 
