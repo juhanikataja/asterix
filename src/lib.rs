@@ -496,7 +496,8 @@ fn compress_mlp(
     let norm = normalize_vdf(&mut vdf);
     let mut reconstructed = compress_vdf(&vdf, fourier_order, epochs, n_layers, n_neurons, size);
     unnormalize_vdf(&mut reconstructed, norm.0, norm.1);
-    unscale_vdf(&mut reconstructed, sparse);
+    unscale_vdf(&mut reconstructed);
+    sparsify(&mut reconstructed, sparse);
     Ok(reconstructed)
 }
 
