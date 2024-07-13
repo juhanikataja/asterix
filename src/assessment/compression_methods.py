@@ -23,15 +23,15 @@ from sklearn.decomposition import PCA
 
 
 # MLP with fourier features
-def reconstruct_cid_fourier_mlp(f, cid, len):
+def reconstruct_cid_fourier_mlp(f, cid):
+    sparsity = 1.0e-16
     order = 12
     epochs = 1
     layers = 2
     neurons = 50
-    max_indexes, vdf = vdf_extract.extract(f, cid, len)
+    max_indexes, vdf,len = vdf_extract.extract(f, cid,sparsity)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
-    sparsity = 1.0e-16
     if f.check_variable("MinValue"):
         sparsity = f.read_variable("proton" + "/EffectiveSparsityThreshold", cid)
     reconstructed_vdf = np.reshape(
@@ -51,12 +51,12 @@ def reconstruct_cid_fourier_mlp(f, cid, len):
     return cid, np.array(final_vdf, dtype=np.float32)
 
 # MLP
-def reconstruct_cid_mlp(f, cid, len):
+def reconstruct_cid_mlp(f, cid):
     order = 0
     epochs = 1
     layers = 2
     neurons = 50
-    max_indexes, vdf = vdf_extract.extract(f, cid, len)
+    max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
     sparsity = 1.0e-16
@@ -78,9 +78,9 @@ def reconstruct_cid_mlp(f, cid, len):
     return cid, np.array(final_vdf, dtype=np.float32)
 
 # ZFP
-def reconstruct_cid_zfp(f, cid, len):
+def reconstruct_cid_zfp(f, cid):
     tolerance = 1e-13
-    max_indexes, vdf = vdf_extract.extract(f, cid, len)
+    max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
     sparsity = 1.0e-16
@@ -99,9 +99,9 @@ def reconstruct_cid_zfp(f, cid, len):
     return cid, np.array(final_vdf, dtype=np.float32)
 
 # Spherical Harmonics
-def reconstruct_cid_sph(f, cid, len):
+def reconstruct_cid_sph(f, cid):
     degree =10 
-    max_indexes, vdf = vdf_extract.extract(f, cid, len)
+    max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
     sparsity = 1.0e-16
@@ -121,8 +121,8 @@ def reconstruct_cid_sph(f, cid, len):
 
 
 # Octree
-def reconstruct_cid_oct(f, cid, len):
-    max_indexes, vdf = vdf_extract.extract(f, cid, len)
+def reconstruct_cid_oct(f, cid):
+    max_indexes, vdf ,len= vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
     sparsity = 1.0e-16
@@ -146,9 +146,9 @@ def reconstruct_cid_oct(f, cid, len):
 
 
 # CPA
-def reconstruct_cid_pca(f, cid, len):
+def reconstruct_cid_pca(f, cid):
     n =10 
-    max_indexes, vdf = vdf_extract.extract(f, cid, len)
+    max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
     sparsity = 1.0e-16
@@ -183,7 +183,7 @@ def reconstruct_cid_pca(f, cid, len):
 
 
 #CNN
-def reconstruct_cid_cnn(f, cid, len):
+def reconstruct_cid_cnn(f, cid):
     class CNN(nn.Module):
         def __init__(self):
             super(CNN, self).__init__()
@@ -233,7 +233,7 @@ def reconstruct_cid_cnn(f, cid, len):
         return reconstructed_array, size
     
     epochs=10
-    max_indexes, vdf = vdf_extract.extract(f, cid, len)
+    max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
     sparsity = 1.0e-16
@@ -258,10 +258,10 @@ def reconstruct_cid_cnn(f, cid, len):
 
 
 # GMM
-def reconstruct_cid_gmm(f, cid, len):
+def reconstruct_cid_gmm(f, cid):
     n_pop=5
     norm_range=300
-    max_indexes, vdf = vdf_extract.extract(f, cid, len)
+    max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
     sparsity = 1.0e-16
@@ -286,8 +286,8 @@ def reconstruct_cid_gmm(f, cid, len):
 
 
 # DWT
-def reconstruct_cid_dwt(f, cid, len):
-    max_indexes, vdf = vdf_extract.extract(f, cid, len)
+def reconstruct_cid_dwt(f, cid):
+    max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
     sparsity = 1.0e-16
@@ -341,10 +341,10 @@ def reconstruct_cid_dwt(f, cid, len):
 
 
 # DCT
-def reconstruct_cid_dct(f, cid, len):
+def reconstruct_cid_dct(f, cid):
     blocksize = 8
     keep_n = 4
-    max_indexes, vdf = vdf_extract.extract(f, cid, len)
+    max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
     sparsity = 1.0e-16

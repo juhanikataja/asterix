@@ -1,10 +1,36 @@
-def extract(f, cid, len=25):
+#some math to calculate the bulk velocity and its location in the VDF space
+def get_bulk_v(vdf,f,sparse=1e-16):
+    from scipy.integrate import simps
     import numpy as np
-    import pytools as pt
-    import matplotlib.pyplot as plt
-    from matplotlib.colors import LogNorm
-    from matplotlib.colors import LogNorm
+    mesh=f.get_velocity_mesh_extent()
+    sz=f.get_velocity_mesh_size()
+    wid=int(f.get_WID())
+    v_x = np.linspace(mesh[0], mesh[3], int(wid*sz[0]))
+    v_y = np.linspace(mesh[1], mesh[4], int(wid*sz[1]))
+    v_z = np.linspace(mesh[2], mesh[5], int(wid*sz[2]))
+    Vx, Vy, Vz = np.meshgrid(v_x, v_y, v_z, indexing='ij')
+    term_1_x = simps(simps(simps(Vx * vdf, v_z), v_y), v_x)
+    term_1_y = simps(simps(simps(Vy * vdf, v_z), v_y), v_x)
+    term_1_z = simps(simps(simps(Vz * vdf, v_z), v_y), v_x)
+    term_2 = simps(simps(simps(vdf, v_z), v_y), v_x)
+    bulk_v = np.array([term_1_x / term_2,term_1_y / term_2,term_1_z / term_2])    
+    index_x = (np.abs(v_x - bulk_v[0])).argmin()
+    index_y = (np.abs(v_y - bulk_v[1])).argmin()
+    index_z = (np.abs(v_z - bulk_v[2])).argmin()
+    loc=[index_x,index_y,index_z]
+    return bulk_v ,loc
 
+def get_vdf_bounding_box(vdf,sparse):
+    import numpy as np
+    #Get BBOX
+    valid_indices = np.argwhere(vdf > sparse)
+    bounding_box=[valid_indices[:, 0].min(), valid_indices[:, 1].min(),         
+                  valid_indices[:, 2].min(), valid_indices[:, 0].max(),         
+                  valid_indices[:, 1].max(), valid_indices[:, 2].max()]
+    return bounding_box
+
+def extract(f, cid,sparsity=1e-16):
+    import numpy as np
     assert cid > 0
 
     # -- read phase space density
@@ -41,14 +67,13 @@ def extract(f, cid, len=25):
     dist = dist.reshape(4 * int(size[0]), 4 * int(size[1]), 4 * int(size[2]))
 
     vdf = dist
-    if len > 0:
-        i, j, k = np.unravel_index(np.argmax(vdf), vdf.shape)
-        data = vdf[(i - len) : (i + len), (j - len) : (j + len), (k - len) : (k + len)]
-    else:
-        i = j = k = 0
-        data = vdf[:, :, :]
+    bulk_v,bulk_v_loc=get_bulk_v(vdf,f,sparsity)
+    bbox=get_vdf_bounding_box(vdf,sparsity)
+    bbox_max_side=np.max([bbox[3]-bbox[0]+1,bbox[4]-bbox[1]+1,bbox[5]-bbox[2]+1])
+    len=bbox_max_side//2
+    data = vdf[(bulk_v_loc[0] - len) : (bulk_v_loc[0] + len), (bulk_v_loc[1] - len) : (bulk_v_loc[1] + len), (bulk_v_loc[2] - len) : (bulk_v_loc[2] + len)]
     print(f"Extracted VDF shape = {np.shape(data)}")
-    return [i, j, k], np.array(data, dtype=np.double)
+    return bulk_v_loc,np.array(data, dtype=np.double),len
 
 
 if __name__ == "__main__":

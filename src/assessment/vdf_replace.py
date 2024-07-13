@@ -1,4 +1,5 @@
 import sys, os
+import numpy as np
 from tqdm import tqdm
 import xml.etree.ElementTree as ET
 import struct
@@ -298,7 +299,7 @@ def add_reconstructed_velocity_space_mpi(dst, cellid, blocks_and_values, bpc):
     return
 
 
-def reconstruct_vdf(f, cid, len, reconstruction_method):
+def reconstruct_vdf(f, cid, reconstruction_method):
     """
     f: VlsvReader Object
     len : boxed limits of vdfs that get reconstructed
@@ -306,7 +307,7 @@ def reconstruct_vdf(f, cid, len, reconstruction_method):
     reconstruction_method: function that performs the reconstruction
     """
     print(f"Extracting CellID {cid}")
-    _, reconstructed = reconstruction_method(f, cid, len)
+    _, reconstructed = reconstruction_method(f, cid)
     extents = f.get_velocity_mesh_extent()
     size = f.get_velocity_mesh_size()
     dv = f.get_velocity_mesh_dv()
@@ -331,7 +332,7 @@ def reconstruct_vdf(f, cid, len, reconstruction_method):
     return blocks, block_data
 
 
-def reconstruct_vdfs_mpi(filename, len, sparsity, reconstruction_method, output_file_name):
+def reconstruct_vdfs_mpi(filename, sparsity, reconstruction_method, output_file_name):
     """
     filename: file name to reconstuct
     len : boxed limits of vdfs that get reconstructed
@@ -363,7 +364,7 @@ def reconstruct_vdfs_mpi(filename, len, sparsity, reconstruction_method, output_
 
     cnt = 0
     for cid in local_cids:
-        a, b = reconstruct_vdf(f, cid, len, reconstruction_method)
+        a, b = reconstruct_vdf(f, cid, reconstruction_method)
         local_reconstructed_cids.append(cid)
         local_blocks.append(a)
         local_block_data.append(b)
@@ -397,44 +398,43 @@ if __name__ == "__main__":
     file = sys.argv[1]
     sparsity = 1e-16
     f = pt.vlsvfile.VlsvReader(file)
-    boxed = 25
 
     reconstruct_vdfs_mpi(
-        file, boxed, sparsity, cm.reconstruct_cid_fourier_mlp, "output_fourier_mlp.vlsv"
+        file, sparsity, cm.reconstruct_cid_fourier_mlp, "output_fourier_mlp.vlsv"
     )
 
     reconstruct_vdfs_mpi(
-        file, boxed, sparsity, cm.reconstruct_cid_mlp, "output_mlp.vlsv"
+        file, sparsity, cm.reconstruct_cid_mlp, "output_mlp.vlsv"
     )
 
     reconstruct_vdfs_mpi(
-        file, boxed, sparsity, cm.reconstruct_cid_zfp, "output_zfp.vlsv"
+        file, sparsity, cm.reconstruct_cid_zfp, "output_zfp.vlsv"
     )
 
     reconstruct_vdfs_mpi(
-        file, boxed, sparsity, cm.reconstruct_cid_sph, "output_sph.vlsv"
+        file, sparsity, cm.reconstruct_cid_sph, "output_sph.vlsv"
     )
 
     reconstruct_vdfs_mpi(
-        file, boxed, sparsity, cm.reconstruct_cid_cnn, "output_cnn.vlsv"
+        file, sparsity, cm.reconstruct_cid_cnn, "output_cnn.vlsv"
     )
 
     reconstruct_vdfs_mpi(
-        file, boxed, sparsity, cm.reconstruct_cid_gmm, "output_gmm.vlsv"
+        file, sparsity, cm.reconstruct_cid_gmm, "output_gmm.vlsv"
     )
 
     reconstruct_vdfs_mpi(
-        file, boxed, sparsity, cm.reconstruct_cid_dwt, "output_dwt.vlsv"
+        file, sparsity, cm.reconstruct_cid_dwt, "output_dwt.vlsv"
     )
 
     # reconstruct_vdfs_mpi(
-    #   # file, boxed, sparsity, cm.reconstruct_cid_dct, "output_dct.vlsv"
+    #   # file, sparsity, cm.reconstruct_cid_dct, "output_dct.vlsv"
     # )
 
     reconstruct_vdfs_mpi(
-      file, boxed, sparsity, cm.reconstruct_cid_pca, "output_pca.vlsv"
+      file, sparsity, cm.reconstruct_cid_pca, "output_pca.vlsv"
     )
 
     reconstruct_vdfs_mpi(
-      file, boxed, sparsity, cm.reconstruct_cid_oct, "output_oct.vlsv"
+      file, sparsity, cm.reconstruct_cid_oct, "output_oct.vlsv"
     )
