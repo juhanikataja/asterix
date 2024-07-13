@@ -27,8 +27,7 @@ def reconstruct_cid_fourier_mlp(f, cid):
     sparsity = 1.0e-16
     order = 12
     epochs = 1
-    layers = 2
-    neurons = 50
+    hidden_layers=[50,200,100,10]
     max_indexes, vdf,len = vdf_extract.extract(f, cid,sparsity)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
@@ -36,7 +35,7 @@ def reconstruct_cid_fourier_mlp(f, cid):
         sparsity = f.read_variable("proton" + "/EffectiveSparsityThreshold", cid)
     reconstructed_vdf = np.reshape(
         mlp_compress.compress_mlp_from_vec(
-            vdf.flatten(), order, epochs, layers, neurons, nx, sparsity
+            vdf.flatten(), order, epochs,np.array(hidden_layers,dtype=np.uint64) , nx, sparsity
         ),
         (nx, ny, nz),
     )
@@ -54,8 +53,7 @@ def reconstruct_cid_fourier_mlp(f, cid):
 def reconstruct_cid_mlp(f, cid):
     order = 0
     epochs = 1
-    layers = 2
-    neurons = 50
+    hidden_layers=[50,50]
     max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
@@ -64,7 +62,7 @@ def reconstruct_cid_mlp(f, cid):
         sparsity = f.read_variable("proton" + "/EffectiveSparsityThreshold", cid)
     reconstructed_vdf = np.reshape(
         mlp_compress.compress_mlp_from_vec(
-            vdf.flatten(), order, epochs, layers, neurons, nx, sparsity
+            vdf.flatten(), order, epochs, np.array(hidden_layers,dtype=np.uint64) , nx, sparsity
         ),
         (nx, ny, nz),
     )

@@ -289,7 +289,7 @@ pub mod network {
         input_data: DMatrix<T>,
         output_data: DMatrix<T>,
         batch_size: usize,
-        neurons_per_layer: usize,
+        neurons_per_layer: Vec<usize>,
         // input_buffer :mut DMatrix::<T>,
         // output_buffer :mut DMatrix::<T>
     }
@@ -301,8 +301,7 @@ pub mod network {
         pub fn new(
             input_size: usize,
             output_size: usize,
-            num_layers: usize,
-            neurons_per_layer: usize,
+            hidden_layers: Vec<usize>,
             input: &DMatrix<T>,
             output: &DMatrix<T>,
             batch_size: usize,
@@ -310,20 +309,20 @@ pub mod network {
             let mut v: Vec<FullyConnectedLayer<T>> = vec![];
             let thread_layers_object: Vec<Vec<FullyConnectedLayer<T>>> = vec![];
             v.push(FullyConnectedLayer::new(
-                neurons_per_layer,
+                hidden_layers.first().unwrap().clone(),
                 input_size,
                 batch_size,
             ));
-            for _ in 1..num_layers - 1 {
+            for i in 1..hidden_layers.len() {
                 v.push(FullyConnectedLayer::new(
-                    neurons_per_layer,
-                    neurons_per_layer,
+                    hidden_layers[i],
+                    hidden_layers[i - 1],
                     batch_size,
                 ));
             }
             v.push(FullyConnectedLayer::new(
                 output_size,
-                neurons_per_layer,
+                hidden_layers.last().unwrap().clone(),
                 batch_size,
             ));
             assert_eq!(input_size, input.ncols());
@@ -334,7 +333,7 @@ pub mod network {
                 input_data: input.clone(),
                 output_data: output.clone(),
                 batch_size,
-                neurons_per_layer,
+                neurons_per_layer: hidden_layers,
             }
         }
 
@@ -342,8 +341,7 @@ pub mod network {
             let mut net = Network::<T>::new(
                 other.input_data.ncols(),
                 other.output_data.ncols(),
-                other.layers.len(),
-                other.neurons_per_layer,
+                other.neurons_per_layer.clone(),
                 &other.input_data,
                 &other.output_data,
                 batch_size,
@@ -794,17 +792,46 @@ pub mod network {
         }
     }
 
+    fn vec_usize_to_bytes(vec: &Vec<usize>) -> Vec<u8> {
+        let mut bytes: Vec<u8> = Vec::with_capacity(vec.len() * std::mem::size_of::<usize>());
+        for value in vec {
+            bytes.extend_from_slice(&value.to_ne_bytes());
+        }
+        bytes
+    }
+
+    fn vec_bytes_to_vec_usize(bytes: &Vec<u8>) -> Vec<usize> {
+        let usize_size = std::mem::size_of::<usize>();
+        assert!(
+            bytes.len() % usize_size == 0,
+            "This cannot be casted to a vector of usize"
+        );
+
+        bytes
+            .chunks(usize_size)
+            .map(|chunk| {
+                let mut array = [0u8; std::mem::size_of::<usize>()];
+                array.copy_from_slice(chunk);
+                usize::from_ne_bytes(array)
+            })
+            .collect()
+    }
+
     impl NetworkIO<f32> for Network<f32> {
         fn get_network_state(&self) -> Vec<u8> {
+            let arch_bytes = vec_usize_to_bytes(&self.neurons_per_layer);
             //Hardcoded 1 below is the 8 bytes we need to store the number of layers
             let total_bytes = self.calculate_total_bytes()
-                + std::mem::size_of::<usize>() * (self.layers.len() + 1)
-                + TAG.len();
+                + std::mem::size_of::<usize>() * (self.layers.len() + 1 + 1)
+                + TAG.len()
+                + arch_bytes.len();
             let mut data: Vec<u8> = vec![];
             data.reserve_exact(total_bytes);
             let num_layers = self.layers.len();
             let bytes: [u8; std::mem::size_of::<usize>()] = num_layers.to_ne_bytes();
             data.extend_from_slice(&bytes);
+            data.extend_from_slice(&arch_bytes.len().to_ne_bytes());
+            data.extend_from_slice(&arch_bytes);
             for l in self.layers.iter() {
                 let n = l.neurons;
                 let bytes: [u8; std::mem::size_of::<usize>()] = n.to_ne_bytes();
@@ -855,15 +882,23 @@ pub mod network {
             let mut offset = 0;
             let num_layers = usize::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
             offset += 8;
-            let n = usize::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
+            let arch_size = usize::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
+            offset += 8;
+            let mut hidden_layers = Vec::<usize>::new();
+            for _ in (0..arch_size).step_by(std::mem::size_of::<usize>()) {
+                hidden_layers.push(usize::from_ne_bytes(
+                    buffer[offset..(offset + 8)].try_into().unwrap(),
+                ));
+                offset += 8;
+            }
+            let _n = usize::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
             offset += 8;
             let fake_input = DMatrix::<f32>::zeros(1, input_size);
             let fake_output = DMatrix::<f32>::zeros(1, output_size);
             let mut net = Network::<f32>::new(
                 input_size,
                 output_size,
-                num_layers,
-                n,
+                hidden_layers,
                 &fake_input,
                 &fake_output,
                 batch_size,
@@ -940,15 +975,19 @@ pub mod network {
 
     impl NetworkIO<f64> for Network<f64> {
         fn get_network_state(&self) -> Vec<u8> {
+            let arch_bytes = vec_usize_to_bytes(&self.neurons_per_layer);
             //Hardcoded 1 below is the 8 bytes we need to store the number of layers
             let total_bytes = self.calculate_total_bytes()
-                + std::mem::size_of::<usize>() * (self.layers.len() + 1)
-                + TAG.len();
+                + std::mem::size_of::<usize>() * (self.layers.len() + 1 + 1)
+                + TAG.len()
+                + arch_bytes.len();
             let mut data: Vec<u8> = vec![];
             data.reserve_exact(total_bytes);
             let num_layers = self.layers.len();
             let bytes: [u8; std::mem::size_of::<usize>()] = num_layers.to_ne_bytes();
             data.extend_from_slice(&bytes);
+            data.extend_from_slice(&arch_bytes.len().to_ne_bytes());
+            data.extend_from_slice(&arch_bytes);
             for l in self.layers.iter() {
                 let n = l.neurons;
                 let bytes: [u8; std::mem::size_of::<usize>()] = n.to_ne_bytes();
@@ -999,15 +1038,23 @@ pub mod network {
             let mut offset = 0;
             let num_layers = usize::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
             offset += 8;
-            let n = usize::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
+            let arch_size = usize::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
+            offset += 8;
+            let mut hidden_layers = Vec::<usize>::new();
+            for _ in (0..arch_size).step_by(std::mem::size_of::<usize>()) {
+                hidden_layers.push(usize::from_ne_bytes(
+                    buffer[offset..(offset + 8)].try_into().unwrap(),
+                ));
+                offset += 8;
+            }
+            let _n = usize::from_ne_bytes(buffer[offset..(offset + 8)].try_into().unwrap());
             offset += 8;
             let fake_input = DMatrix::<f64>::zeros(1, input_size);
             let fake_output = DMatrix::<f64>::zeros(1, output_size);
             let mut net = Network::<f64>::new(
                 input_size,
                 output_size,
-                num_layers,
-                n,
+                hidden_layers,
                 &fake_input,
                 &fake_output,
                 batch_size,

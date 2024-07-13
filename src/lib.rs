@@ -149,16 +149,14 @@ fn compress_vdf(
     vdf: &Vec<f64>,
     fourier_order: usize,
     epochs: usize,
-    n_layers: usize,
-    n_neurons: usize,
+    hidden_layers: Vec<usize>,
     size: usize,
 ) -> Vec<f64> {
     let (vspace, density, _harmonics) = vdf_fourier_features(&vdf, fourier_order, size);
     let mut net = Network::<f64>::new(
         vspace.ncols(),
         density.ncols(),
-        n_layers,
-        n_neurons,
+        hidden_layers,
         &vspace,
         &density,
         8,
@@ -480,8 +478,7 @@ fn compress_mlp(
     vdf_file: &str,
     fourier_order: usize,
     epochs: usize,
-    n_layers: usize,
-    n_neurons: usize,
+    hidden_layers: Vec<usize>,
     size: usize,
     sparse: f64,
 ) -> PyResult<Vec<f64>> {
@@ -494,7 +491,7 @@ fn compress_mlp(
     };
     scale_vdf(&mut vdf, sparse);
     let norm = normalize_vdf(&mut vdf);
-    let mut reconstructed = compress_vdf(&vdf, fourier_order, epochs, n_layers, n_neurons, size);
+    let mut reconstructed = compress_vdf(&vdf, fourier_order, epochs, hidden_layers, size);
     unnormalize_vdf(&mut reconstructed, norm.0, norm.1);
     unscale_vdf(&mut reconstructed);
     sparsify(&mut reconstructed, sparse);
@@ -506,14 +503,13 @@ fn compress_mlp_from_vec(
     mut vdf: Vec<f64>,
     fourier_order: usize,
     epochs: usize,
-    n_layers: usize,
-    n_neurons: usize,
+    hidden_layers: Vec<usize>,
     size: usize,
     sparse: f64,
 ) -> PyResult<Vec<f64>> {
     scale_vdf(&mut vdf, sparse);
     let norm = normalize_vdf(&mut vdf);
-    let mut reconstructed = compress_vdf(&vdf, fourier_order, epochs, n_layers, n_neurons, size);
+    let mut reconstructed = compress_vdf(&vdf, fourier_order, epochs, hidden_layers, size);
     unnormalize_vdf(&mut reconstructed, norm.0, norm.1);
     unscale_vdf(&mut reconstructed);
     sparsify(&mut reconstructed, sparse);
