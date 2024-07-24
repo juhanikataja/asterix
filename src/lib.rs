@@ -161,7 +161,7 @@ fn compress_vdf(
         &density,
         8,
     );
-    net.randomize_xavier();
+    net.randomize_he();
     //Train
     let before = Instant::now();
     for epoch in 0..epochs {
@@ -170,6 +170,21 @@ fn compress_vdf(
             println!("Cost at epoch {} is {:.4}", epoch, cost);
         }
     }
+
+    // let mut epoch = 0;
+    // loop {
+    //     let cost = net.train_minibatch(2.5e-5.into(), epoch, 1);
+    //     if epoch % 1 == 0 {
+    //         // println!("Cost at epoch {} is {:.4}", epoch, cost);
+    //         // println!("Epoch {} is {:.7}", epoch, cost);
+    //     }
+    //     epoch += 1;
+    //     if cost < 1e-6 || epoch > 50 {
+    //         println!("Breaking  at epoch {} and cost is {:.6}", epoch, cost);
+    //         break;
+    //     }
+    // }
+
     let t_spent = before.elapsed();
     let reconstructed = reconstruct_vdf(&mut net, &vspace);
     let vdf_size = vdf.len() * std::mem::size_of::<f64>();

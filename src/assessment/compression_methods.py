@@ -25,9 +25,9 @@ from sklearn.decomposition import PCA
 # MLP with fourier features
 def reconstruct_cid_fourier_mlp(f, cid):
     sparsity = 1.0e-16
-    order = 12
+    order = 48
     epochs = 1
-    hidden_layers=[50,200,100,10]
+    hidden_layers=[75,30,30,10]
     max_indexes, vdf,len = vdf_extract.extract(f, cid,sparsity)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
