@@ -103,6 +103,17 @@ pub mod network {
         output
     }
 
+    //Yeah we unfirtunately need this
+    fn clamp<T: Float>(val: T, min: T, max: T) -> T {
+        if val < min {
+            min
+        } else if val > max {
+            max
+        } else {
+            val
+        }
+    }
+
     fn quantize_vector<T: Float + ToPrimitive>(
         input_vector: &Vec<T>,
         bits: i32,
@@ -125,7 +136,7 @@ pub mod network {
 
         let mut kappa: Vec<usize> = Vec::with_capacity(input_vector.len());
         for val in input_vector.iter() {
-            let c = val.clamp(min_val, max_val);
+            let c: T = clamp(*val, min_val, max_val);
             let q = ((c - min_val) * scale + T::from(0.5).unwrap())
                 .to_usize()
                 .unwrap();
