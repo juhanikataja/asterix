@@ -21,18 +21,19 @@ from scipy.fft import dctn, idctn
 import numpy as np
 from sklearn.decomposition import PCA
 
+def sparsify(vdf,sparsity):
+    vdf[vdf<sparsity]=0.0
+    return
+    
 
 # MLP with fourier features
-def reconstruct_cid_fourier_mlp(f, cid):
-    sparsity = 1.0e-16
+def reconstruct_cid_fourier_mlp(f, cid,sparsity):
     order = 48
-    epochs = 1
-    hidden_layers=[75,30,30,10]
+    epochs = 60
+    hidden_layers=[75,50,50,10]
     max_indexes, vdf,len = vdf_extract.extract(f, cid,sparsity)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
-    if f.check_variable("MinValue"):
-        sparsity = f.read_variable("proton" + "/EffectiveSparsityThreshold", cid)
     reconstructed_vdf = np.reshape(
         mlp_compress.compress_mlp_from_vec(
             vdf.flatten(), order, epochs,np.array(hidden_layers,dtype=np.uint64) , nx, sparsity
@@ -46,20 +47,17 @@ def reconstruct_cid_fourier_mlp(f, cid):
         max_indexes[1] - len : max_indexes[1] + len,
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
-    final_vdf[final_vdf<=sparsity]=0.0
+    sparsify(final_vdf,sparsity)
     return cid, np.array(final_vdf, dtype=np.float32)
 
 # MLP
-def reconstruct_cid_mlp(f, cid):
+def reconstruct_cid_mlp(f, cid,sparsity):
     order = 0
-    epochs = 1
-    hidden_layers=[50,50]
+    epochs = 60
+    hidden_layers=[75,50,50,10]
     max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
-    sparsity = 1.0e-16
-    if f.check_variable("MinValue"):
-        sparsity = f.read_variable("proton" + "/EffectiveSparsityThreshold", cid)
     reconstructed_vdf = np.reshape(
         mlp_compress.compress_mlp_from_vec(
             vdf.flatten(), order, epochs, np.array(hidden_layers,dtype=np.uint64) , nx, sparsity
@@ -73,18 +71,15 @@ def reconstruct_cid_mlp(f, cid):
         max_indexes[1] - len : max_indexes[1] + len,
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
+    sparsify(final_vdf,sparsity)
     return cid, np.array(final_vdf, dtype=np.float32)
 
 # ZFP
-def reconstruct_cid_zfp(f, cid):
+def reconstruct_cid_zfp(f, cid,sparsity):
     tolerance = 1e-13
     max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
-    sparsity = 1.0e-16
-    if f.check_variable("MinValue"):
-        sparsity = f.read_variable("proton" + "/EffectiveSparsityThreshold", cid)
-
     compressed_vdf = pyzfp.compress(vdf, tolerance=tolerance)
     reconstructed_vdf = pyzfp.decompress(compressed_vdf,vdf.shape,vdf.dtype,tolerance)
     mesh = f.get_velocity_mesh_size()
@@ -94,17 +89,15 @@ def reconstruct_cid_zfp(f, cid):
         max_indexes[1] - len : max_indexes[1] + len,
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
+    sparsify(final_vdf,sparsity)
     return cid, np.array(final_vdf, dtype=np.float32)
 
 # Spherical Harmonics
-def reconstruct_cid_sph(f, cid):
+def reconstruct_cid_sph(f, cid,sparsity):
     degree =10 
     max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
-    sparsity = 1.0e-16
-    if f.check_variable("MinValue"):
-        sparsity = f.read_variable("proton" + "/EffectiveSparsityThreshold", cid)
     reconstructed_vdf=mlp_compress.compress_sph_from_vec(vdf.flatten(),degree,nx)
     reconstructed_vdf=np.array(reconstructed_vdf,dtype=np.double)
     reconstructed_vdf= np.reshape(reconstructed_vdf,np.shape(vdf),order='C')
@@ -115,18 +108,15 @@ def reconstruct_cid_sph(f, cid):
         max_indexes[1] - len : max_indexes[1] + len,
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
+    sparsify(final_vdf,sparsity)
     return cid, np.array(final_vdf, dtype=np.float32)
 
 
 # Octree
-def reconstruct_cid_oct(f, cid):
+def reconstruct_cid_oct(f, cid,sparsity):
     max_indexes, vdf ,len= vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
-    sparsity = 1.0e-16
-    if f.check_variable("MinValue"):
-        sparsity = f.read_variable("proton" + "/EffectiveSparsityThreshold", cid)
-    
     jl.Pkg.activate("../jl_env")
     jl.Pkg.instantiate()
     jl.include("../octree.jl")
@@ -140,20 +130,16 @@ def reconstruct_cid_oct(f, cid):
         max_indexes[1] - len : max_indexes[1] + len,
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
+    sparsify(final_vdf,sparsity)
     return cid, np.array(final_vdf, dtype=np.float32)
 
 
-# CPA
-def reconstruct_cid_pca(f, cid):
+# PCA
+def reconstruct_cid_pca(f, cid,sparsity):
     n =10 
     max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
-    sparsity = 1.0e-16
-    if f.check_variable("MinValue"):
-        sparsity = f.read_variable("proton" + "/EffectiveSparsityThreshold", cid)
-    
-    
     vdf[vdf<sparsity]=sparsity
     vdf = np.log10(vdf)
     arr=vdf.copy()
@@ -177,11 +163,12 @@ def reconstruct_cid_pca(f, cid):
         max_indexes[1] - len : max_indexes[1] + len,
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
+    sparsify(final_vdf,sparsity)
     return cid, np.array(final_vdf, dtype=np.float32)
 
 
 #CNN
-def reconstruct_cid_cnn(f, cid):
+def reconstruct_cid_cnn(f, cid,sparsity):
     class CNN(nn.Module):
         def __init__(self):
             super(CNN, self).__init__()
@@ -234,9 +221,6 @@ def reconstruct_cid_cnn(f, cid):
     max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
-    sparsity = 1.0e-16
-    if f.check_variable("MinValue"):
-        sparsity = f.read_variable("proton" + "/EffectiveSparsityThreshold", cid)
     vdf[vdf<sparsity]=sparsity
     vdf = np.log10(vdf)
     input_array=vdf
@@ -252,20 +236,17 @@ def reconstruct_cid_cnn(f, cid):
         max_indexes[1] - len : max_indexes[1] + len,
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
+    sparsify(final_vdf,sparsity)
     return cid, np.array(final_vdf, dtype=np.float32)
 
 
 # GMM
-def reconstruct_cid_gmm(f, cid):
+def reconstruct_cid_gmm(f, cid,sparsity):
     n_pop=5
     norm_range=300
     max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
-    sparsity = 1.0e-16
-    if f.check_variable("MinValue"):
-        sparsity = f.read_variable("proton" + "/EffectiveSparsityThreshold", cid)
-    
     means,weights,covs,norm_unit=tools.run_gmm(vdf,n_pop,norm_range)
     n_bins=nx
     v_min,v_max=0,nx
@@ -280,18 +261,15 @@ def reconstruct_cid_gmm(f, cid):
         max_indexes[1] - len : max_indexes[1] + len,
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
+    sparsify(final_vdf,sparsity)
     return cid, np.array(final_vdf, dtype=np.float32)
 
 
 # DWT
-def reconstruct_cid_dwt(f, cid):
+def reconstruct_cid_dwt(f, cid,sparsity):
     max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
-    sparsity = 1.0e-16
-    if f.check_variable("MinValue"):
-        sparsity = f.read_variable("proton" + "/EffectiveSparsityThreshold", cid)
-
     threshold = sparsity
     orig_shape = vdf.shape
     vdf[np.isnan(vdf)] = 0
@@ -335,20 +313,17 @@ def reconstruct_cid_dwt(f, cid):
         max_indexes[1] - len : max_indexes[1] + len,
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
+    sparsify(final_vdf,sparsity)
     return cid, np.array(final_vdf, dtype=np.float32)
 
 
 # DCT
-def reconstruct_cid_dct(f, cid):
+def reconstruct_cid_dct(f, cid,sparsity):
     blocksize = 8
     keep_n = 4
     max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
-    sparsity = 1.0e-16
-    if f.check_variable("MinValue"):
-        sparsity = f.read_variable("proton" + "/EffectiveSparsityThreshold", cid)
-
     orig_shape = vdf.shape
     vdf[np.isnan(vdf)] = 0
 
@@ -381,7 +356,7 @@ def reconstruct_cid_dct(f, cid):
 
     reconstructed_vdf = vdf_rec[0:orig_shape[0],0:orig_shape[1],0:orig_shape[2]]
     reconstructed_vdf=np.array(reconstructed_vdf,dtype=np.double)
-    reconstructed_vdf= np.reshape(reconstructed_vdf,np.shape(vdf),order='C')
+    reconstructed_vdf= np.reshape(reconstructed_vdf,orig_shape,order='C')
     mesh = f.get_velocity_mesh_size()
     final_vdf = np.zeros((int(4 * mesh[0]), int(4 * mesh[1]), int(4 * mesh[2])))
     final_vdf[
@@ -389,5 +364,5 @@ def reconstruct_cid_dct(f, cid):
         max_indexes[1] - len : max_indexes[1] + len,
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
+    sparsify(final_vdf,sparsity)
     return cid, np.array(final_vdf, dtype=np.float32)
-

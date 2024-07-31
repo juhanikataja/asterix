@@ -299,7 +299,7 @@ def add_reconstructed_velocity_space_mpi(dst, cellid, blocks_and_values, bpc):
     return
 
 
-def reconstruct_vdf(f, cid, reconstruction_method):
+def reconstruct_vdf(f, cid,sparsity ,reconstruction_method):
     """
     f: VlsvReader Object
     len : boxed limits of vdfs that get reconstructed
@@ -307,7 +307,7 @@ def reconstruct_vdf(f, cid, reconstruction_method):
     reconstruction_method: function that performs the reconstruction
     """
     print(f"Extracting CellID {cid}")
-    _, reconstructed = reconstruction_method(f, cid)
+    _, reconstructed = reconstruction_method(f, cid,sparsity)
     extents = f.get_velocity_mesh_extent()
     size = f.get_velocity_mesh_size()
     dv = f.get_velocity_mesh_dv()
@@ -364,7 +364,7 @@ def reconstruct_vdfs_mpi(filename, sparsity, reconstruction_method, output_file_
 
     cnt = 0
     for cid in local_cids:
-        a, b = reconstruct_vdf(f, cid, reconstruction_method)
+        a, b = reconstruct_vdf(f, cid,sparsity, reconstruction_method)
         local_reconstructed_cids.append(cid)
         local_blocks.append(a)
         local_block_data.append(b)
@@ -389,52 +389,57 @@ def reconstruct_vdfs_mpi(filename, sparsity, reconstruction_method, output_file_
     return
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print(len(sys.argv))
+    if len(sys.argv) != 3:
         print("ERROR: Wrong usage!")
-        print(f"USAGE: ./{sys.argv[0]} <vlsv file>")
+        print(f"USAGE: ./{sys.argv[0]} <vlsv file> <sparsity>")
         sys.exit()
-
+        
     file = sys.argv[1]
-    sparsity = 1e-16
+    ext=os.path.splitext(file)[-1]
+    if not os.path.isfile(file) or not (ext == ".vlsv"):
+        print(f"ERROR: {file} is not a VLSV file !")
+        sys.exit()
+    sparsity = np.float64(sys.argv[2])
+    assert sparsity>=0
     f = pt.vlsvfile.VlsvReader(file)
+    basename=os.path.basename(file)
 
     reconstruct_vdfs_mpi(
-        file, sparsity, cm.reconstruct_cid_fourier_mlp, "output_fourier_mlp.vlsv"
+        file, sparsity, cm.reconstruct_cid_fourier_mlp, "output_fourier_mlp_"+basename
+    )
+    
+    reconstruct_vdfs_mpi(
+        file, sparsity, cm.reconstruct_cid_mlp, "output_mlp_"+basename
     )
 
     reconstruct_vdfs_mpi(
-        file, sparsity, cm.reconstruct_cid_mlp, "output_mlp.vlsv"
+        file, sparsity, cm.reconstruct_cid_zfp, "output_zfp_"+basename
     )
 
     reconstruct_vdfs_mpi(
-        file, sparsity, cm.reconstruct_cid_zfp, "output_zfp.vlsv"
-    )
-
-    reconstruct_vdfs_mpi(
-        file, sparsity, cm.reconstruct_cid_sph, "output_sph.vlsv"
-    )
-
-    reconstruct_vdfs_mpi(
-        file, sparsity, cm.reconstruct_cid_cnn, "output_cnn.vlsv"
-    )
-
-    reconstruct_vdfs_mpi(
-        file, sparsity, cm.reconstruct_cid_gmm, "output_gmm.vlsv"
-    )
-
-    reconstruct_vdfs_mpi(
-        file, sparsity, cm.reconstruct_cid_dwt, "output_dwt.vlsv"
+        file, sparsity, cm.reconstruct_cid_sph, "output_sph_"+basename
     )
 
     # reconstruct_vdfs_mpi(
-    #   # file, sparsity, cm.reconstruct_cid_dct, "output_dct.vlsv"
+    #     file, sparsity, cm.reconstruct_cid_cnn, "output_cnn_"+basename
     # )
 
     reconstruct_vdfs_mpi(
-      file, sparsity, cm.reconstruct_cid_pca, "output_pca.vlsv"
+        file, sparsity, cm.reconstruct_cid_gmm, "output_gmm_"+basename
     )
 
     reconstruct_vdfs_mpi(
-      file, sparsity, cm.reconstruct_cid_oct, "output_oct.vlsv"
+        file, sparsity, cm.reconstruct_cid_dwt, "output_dwt_"+basename
     )
+
+    reconstruct_vdfs_mpi(
+      file, sparsity, cm.reconstruct_cid_dct, "output_dct_"+basename
+    )
+
+    reconstruct_vdfs_mpi(
+      file, sparsity, cm.reconstruct_cid_pca, "output_pca_"+basename
+    )
+
+    # reconstruct_vdfs_mpi(
+      # file, sparsity, cm.reconstruct_cid_oct, "output_oct_"+basename
+    # )
