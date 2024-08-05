@@ -46,7 +46,7 @@ def reconstruct_cid_mlp(f, cid,sparsity):
     order = 0
     epochs = 50
     hidden_layers=[75,50,50,10]
-    max_indexes, vdf,len = vdf_extract.extract(f, cid)
+    max_indexes, vdf,len = vdf_extract.extract(f, cid,sparsity)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
     reconstructed_vdf = np.reshape(
@@ -68,7 +68,7 @@ def reconstruct_cid_mlp(f, cid,sparsity):
 # ZFP
 def reconstruct_cid_zfp(f, cid,sparsity):
     tolerance = 1e-13
-    max_indexes, vdf,len = vdf_extract.extract(f, cid)
+    max_indexes, vdf,len = vdf_extract.extract(f, cid,sparsity)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
     compressed_vdf = pyzfp.compress(vdf, tolerance=tolerance)
@@ -86,7 +86,7 @@ def reconstruct_cid_zfp(f, cid,sparsity):
 # Spherical Harmonics
 def reconstruct_cid_sph(f, cid,sparsity):
     degree =10 
-    max_indexes, vdf,len = vdf_extract.extract(f, cid)
+    max_indexes, vdf,len = vdf_extract.extract(f, cid,sparsity)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
     reconstructed_vdf=mlp_compress.compress_sph_from_vec(vdf.flatten(),degree,nx)
@@ -106,7 +106,7 @@ def reconstruct_cid_sph(f, cid,sparsity):
 # Octree
 def reconstruct_cid_oct(f, cid,sparsity):
     from juliacall import Main as jl
-    max_indexes, vdf ,len= vdf_extract.extract(f, cid)
+    max_indexes, vdf ,len= vdf_extract.extract(f, cid,sparsity)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
     jl.Pkg.activate("../jl_env")
@@ -130,7 +130,7 @@ def reconstruct_cid_oct(f, cid,sparsity):
 def reconstruct_cid_pca(f, cid,sparsity):
     from sklearn.decomposition import PCA
     n =10 
-    max_indexes, vdf,len = vdf_extract.extract(f, cid)
+    max_indexes, vdf,len = vdf_extract.extract(f, cid,sparsity)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
     vdf[vdf<sparsity]=sparsity
@@ -215,7 +215,7 @@ def reconstruct_cid_cnn(f, cid,sparsity):
         return reconstructed_array, size
     
     epochs=10
-    max_indexes, vdf,len = vdf_extract.extract(f, cid)
+    max_indexes, vdf,len = vdf_extract.extract(f, cid,sparsity)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
     vdf[vdf<sparsity]=sparsity
@@ -241,7 +241,7 @@ def reconstruct_cid_cnn(f, cid,sparsity):
 def reconstruct_cid_gmm(f, cid,sparsity):
     n_pop=5
     norm_range=300
-    max_indexes, vdf,len = vdf_extract.extract(f, cid)
+    max_indexes, vdf,len = vdf_extract.extract(f, cid,sparsity)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
     means,weights,covs,norm_unit=tools.run_gmm(vdf,n_pop,norm_range)
@@ -265,7 +265,7 @@ def reconstruct_cid_gmm(f, cid,sparsity):
 # DWT
 def reconstruct_cid_dwt(f, cid,sparsity):
     import pywt
-    max_indexes, vdf,len = vdf_extract.extract(f, cid)
+    max_indexes, vdf,len = vdf_extract.extract(f, cid,sparsity)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
     threshold = sparsity
@@ -320,7 +320,7 @@ def reconstruct_cid_dct(f, cid,sparsity):
     from scipy.fft import dctn, idctn
     blocksize = 8
     keep_n = 4
-    max_indexes, vdf,len = vdf_extract.extract(f, cid)
+    max_indexes, vdf,len = vdf_extract.extract(f, cid,sparsity)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
     orig_shape = vdf.shape
