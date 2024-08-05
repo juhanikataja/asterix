@@ -404,42 +404,42 @@ if __name__ == "__main__":
     f = pt.vlsvfile.VlsvReader(file)
     basename=os.path.basename(file)
 
-    reconstruct_vdfs_mpi(
-        file, sparsity, cm.reconstruct_cid_fourier_mlp, "output_fourier_mlp_"+basename
-    )
+    # reconstruct_vdfs_mpi(
+    #     file, sparsity, cm.reconstruct_cid_fourier_mlp, "output_fourier_mlp_"+basename
+    # )
     
-    reconstruct_vdfs_mpi(
-        file, sparsity, cm.reconstruct_cid_mlp, "output_mlp_"+basename
-    )
+    # reconstruct_vdfs_mpi(
+    #     file, sparsity, cm.reconstruct_cid_mlp, "output_mlp_"+basename
+    # )
 
-    reconstruct_vdfs_mpi(
-        file, sparsity, cm.reconstruct_cid_zfp, "output_zfp_"+basename
-    )
+    # reconstruct_vdfs_mpi(
+    #     file, sparsity, cm.reconstruct_cid_zfp, "output_zfp_"+basename
+    # )
 
-    reconstruct_vdfs_mpi(
-        file, sparsity, cm.reconstruct_cid_sph, "output_sph_"+basename
-    )
+    # reconstruct_vdfs_mpi(
+    #     file, sparsity, cm.reconstruct_cid_sph, "output_sph_"+basename
+    # )
 
     # reconstruct_vdfs_mpi(
     #     file, sparsity, cm.reconstruct_cid_cnn, "output_cnn_"+basename
     # )
 
-    reconstruct_vdfs_mpi(
-        file, sparsity, cm.reconstruct_cid_gmm, "output_gmm_"+basename
-    )
-
-    reconstruct_vdfs_mpi(
-        file, sparsity, cm.reconstruct_cid_dwt, "output_dwt_"+basename
-    )
-
-    reconstruct_vdfs_mpi(
-      file, sparsity, cm.reconstruct_cid_dct, "output_dct_"+basename
-    )
-
-    reconstruct_vdfs_mpi(
-      file, sparsity, cm.reconstruct_cid_pca, "output_pca_"+basename
-    )
+    # reconstruct_vdfs_mpi(
+    #     file, sparsity, cm.reconstruct_cid_gmm, "output_gmm_"+basename
+    # )
 
     # reconstruct_vdfs_mpi(
-      # file, sparsity, cm.reconstruct_cid_oct, "output_oct_"+basename
+    #     file, sparsity, cm.reconstruct_cid_dwt, "output_dwt_"+basename
     # )
+
+    # reconstruct_vdfs_mpi(
+    #   file, sparsity, cm.reconstruct_cid_dct, "output_dct_"+basename
+    # )
+
+    # reconstruct_vdfs_mpi(
+    #   file, sparsity, cm.reconstruct_cid_pca, "output_pca_"+basename
+    # )
+
+    reconstruct_vdfs_mpi(
+    file, sparsity, cm.reconstruct_cid_oct, "output_oct_"+basename
+    )

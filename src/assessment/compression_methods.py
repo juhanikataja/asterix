@@ -11,15 +11,6 @@ import pyzfp,zlib
 import mlp_compress
 import tools
 import pytools
-import pywt
-from scipy.fft import dctn, idctn
-from juliacall import Main as jl
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from scipy.fft import dctn, idctn
-import numpy as np
-from sklearn.decomposition import PCA
 
 def sparsify(vdf,sparsity):
     vdf[vdf<sparsity]=0.0
@@ -29,7 +20,7 @@ def sparsify(vdf,sparsity):
 # MLP with fourier features
 def reconstruct_cid_fourier_mlp(f, cid,sparsity):
     order = 48
-    epochs = 60
+    epochs = 50
     hidden_layers=[75,50,50,10]
     max_indexes, vdf,len = vdf_extract.extract(f, cid,sparsity)
     nx, ny, nz = np.shape(vdf)
@@ -53,7 +44,7 @@ def reconstruct_cid_fourier_mlp(f, cid,sparsity):
 # MLP
 def reconstruct_cid_mlp(f, cid,sparsity):
     order = 0
-    epochs = 60
+    epochs = 50
     hidden_layers=[75,50,50,10]
     max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
@@ -114,6 +105,7 @@ def reconstruct_cid_sph(f, cid,sparsity):
 
 # Octree
 def reconstruct_cid_oct(f, cid,sparsity):
+    from juliacall import Main as jl
     max_indexes, vdf ,len= vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
@@ -136,6 +128,7 @@ def reconstruct_cid_oct(f, cid,sparsity):
 
 # PCA
 def reconstruct_cid_pca(f, cid,sparsity):
+    from sklearn.decomposition import PCA
     n =10 
     max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
@@ -169,6 +162,10 @@ def reconstruct_cid_pca(f, cid,sparsity):
 
 #CNN
 def reconstruct_cid_cnn(f, cid,sparsity):
+    import torch
+    import torch.nn as nn
+    import torch.optim as optim
+
     class CNN(nn.Module):
         def __init__(self):
             super(CNN, self).__init__()
@@ -267,6 +264,7 @@ def reconstruct_cid_gmm(f, cid,sparsity):
 
 # DWT
 def reconstruct_cid_dwt(f, cid,sparsity):
+    import pywt
     max_indexes, vdf,len = vdf_extract.extract(f, cid)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
@@ -319,6 +317,7 @@ def reconstruct_cid_dwt(f, cid,sparsity):
 
 # DCT
 def reconstruct_cid_dct(f, cid,sparsity):
+    from scipy.fft import dctn, idctn
     blocksize = 8
     keep_n = 4
     max_indexes, vdf,len = vdf_extract.extract(f, cid)
