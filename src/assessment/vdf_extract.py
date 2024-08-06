@@ -29,7 +29,7 @@ def get_vdf_bounding_box(vdf,sparse):
                   valid_indices[:, 1].max(), valid_indices[:, 2].max()]
     return bounding_box
 
-def extract(f, cid,sparsity=1e-16):
+def extract(f, cid,sparsity=1e-16,restrict_box=True):
     import numpy as np
     assert cid > 0
 
@@ -71,6 +71,8 @@ def extract(f, cid,sparsity=1e-16):
     bbox=get_vdf_bounding_box(vdf,sparsity)
     bbox_max_side=np.max([bbox[3]-bbox[0]+1,bbox[4]-bbox[1]+1,bbox[5]-bbox[2]+1])
     len=bbox_max_side//2
+    if (not restrict_box):
+        return bulk_v_loc,np.array(vdf, dtype=np.double),len
     data = vdf[(bulk_v_loc[0] - len) : (bulk_v_loc[0] + len), (bulk_v_loc[1] - len) : (bulk_v_loc[1] + len), (bulk_v_loc[2] - len) : (bulk_v_loc[2] + len)]
     print(f"Extracted VDF shape = {np.shape(data)}")
     return bulk_v_loc,np.array(data, dtype=np.double),len

@@ -55,7 +55,7 @@ def extract_vdf(file, cid, box=-1):
     return np.array(data, dtype=np.float32)
 
 
-def plot_vdfs(a, b, vdf_vmin=1e-16):
+def plot_vdfs(a, b, vdf_vmin=1e-16,save=False,output_name=None):
     nx, ny, nz = np.shape(a)
     fig, ax = plt.subplots(2, 3, figsize=[12, 6])
 
@@ -97,8 +97,12 @@ def plot_vdfs(a, b, vdf_vmin=1e-16):
     ax[1, 2].set_title("diff of (gaussian[1]) laplacians")
     plt.colorbar(im6)
 
-    plt.tight_layout()
-    plt.show()
+    if (save):
+        assert output_name 
+        plt.savefig(output_name,dpi=300)
+    else:
+        plt.tight_layout()
+        plt.show()
 
 
 def plot_vdf_discrete_laplacians(a):

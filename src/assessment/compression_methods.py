@@ -109,9 +109,9 @@ def reconstruct_cid_oct(f, cid,sparsity):
     max_indexes, vdf ,len= vdf_extract.extract(f, cid,sparsity)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
-    jl.Pkg.activate("../jl_env")
+    jl.Pkg.activate("src/jl_env")
     jl.Pkg.instantiate()
-    jl.include("../octree.jl")
+    jl.include("src/octree.jl")
     A, b, img, reco, cell, tree = jl.VDFOctreeApprox.compress(vdf, maxiter=500, alpha=0.0, beta=1.0, nu=2, tol=3e-1, verbose=False)
     reconstructed_vdf=np.array(reco,dtype=np.double)
     reconstructed_vdf= np.reshape(reconstructed_vdf,np.shape(vdf),order='C')
