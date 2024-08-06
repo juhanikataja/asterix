@@ -332,6 +332,46 @@ def reconstruct_vdf(f, cid,sparsity ,reconstruction_method):
     return blocks, block_data
 
 
+def reconstruct_vdf_debug(f, cid,sparsity ,reconstruction_method):
+    import matplotlib.pyplot as plt
+    import tools
+    import vdf_extract
+    """
+    f: VlsvReader Object
+    len : boxed limits of vdfs that get reconstructed
+    cid: the cellid to reconstruct
+    reconstruction_method: function that performs the reconstruction
+    """
+    print(f"Extracting CellID {cid}")
+    _, reconstructed = reconstruction_method(f, cid,sparsity)
+    _, original_vdf,_ = vdf_extract.extract(f, cid,sparsity,False)
+    print(reconstructed.shape)
+    print(original_vdf.shape)
+    image_name=str(cid)+"_"+reconstruction_method.__name__+".png"
+    tools.plot_vdfs(original_vdf, reconstructed, sparsity,True,image_name)
+    extents = f.get_velocity_mesh_extent()
+    size = f.get_velocity_mesh_size()
+    dv = f.get_velocity_mesh_dv()
+    assert dv[0] == dv[1] == dv[2]
+    dv = dv[0]
+    WID = f.get_WID()
+
+    blocks = np.arange(0, np.prod(size), dtype=np.int32)
+    reconstructed = np.array(reconstructed, dtype=np.float32)
+    block_data = np.zeros((np.prod(size), np.power(WID, 3)), dtype=np.float32)
+    for blockid in blocks:
+        block_coords = f.get_velocity_block_coordinates(blockid)
+        rx = int(np.floor((block_coords[0] - extents[0]) / dv))
+        ry = int(np.floor((block_coords[1] - extents[1]) / dv))
+        rz = int(np.floor((block_coords[2] - extents[2]) / dv))
+        for bx in range(0, WID):
+            for by in range(0, WID):
+                for bz in range(0, WID):
+                    localid = bz * WID**2 + by * WID + bx
+                    block_data[blockid, localid] = reconstructed[rz + bz, ry + by, rx + bx]
+
+    return blocks, block_data
+
 def reconstruct_vdfs_mpi(filename, sparsity, reconstruction_method, output_file_name):
     """
     filename: file name to reconstuct
@@ -365,6 +405,7 @@ def reconstruct_vdfs_mpi(filename, sparsity, reconstruction_method, output_file_
     cnt = 0
     for cid in local_cids:
         a, b = reconstruct_vdf(f, cid,sparsity, reconstruction_method)
+        # a, b = reconstruct_vdf_debug(f, cid,sparsity, reconstruction_method)
         local_reconstructed_cids.append(cid)
         local_blocks.append(a)
         local_block_data.append(b)
@@ -388,6 +429,26 @@ def reconstruct_vdfs_mpi(filename, sparsity, reconstruction_method, output_file_
     world_comm.barrier()
     return
 
+def main(file,sparsity):
+    assert sparsity>=0
+    f = pt.vlsvfile.VlsvReader(file)
+    basename=os.path.basename(file)
+    methods={
+        cm.reconstruct_cid_fourier_mlp: "output_fourier_mlp_"+basename, 
+        cm.reconstruct_cid_mlp: "output_mlp_"+basename, 
+        cm.reconstruct_cid_zfp: "output_zfp_"+basename, 
+        cm.reconstruct_cid_sph: "output_sph_"+basename, 
+        cm.reconstruct_cid_cnn: "output_cnn_"+basename, 
+        cm.reconstruct_cid_gmm: "output_gmm_"+basename, 
+        cm.reconstruct_cid_dwt: "output_dwt_"+basename, 
+        cm.reconstruct_cid_dct: "output_dct_"+basename, 
+        cm.reconstruct_cid_pca: "output_pca_"+basename, 
+        cm.reconstruct_cid_oct: "output_oct_"+basename, 
+    }
+
+    for method,output_file_name in methods.items():
+        reconstruct_vdfs_mpi(file, sparsity, method,output_file_name)    
+
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print("ERROR: Wrong usage!")
@@ -400,22 +461,5 @@ if __name__ == "__main__":
         print(f"ERROR: {file} is not a VLSV file !")
         sys.exit()
     sparsity = np.float64(sys.argv[2])
-    assert sparsity>=0
-    f = pt.vlsvfile.VlsvReader(file)
-    basename=os.path.basename(file)
+    main(file,sparsity)
 
-    methods={
-        cm.reconstruct_cid_fourier_mlp: "output_fourier_mlp_"+basename, 
-        cm.reconstruct_cid_mlp: "output_mlp_"+basename, 
-        cm.reconstruct_cid_zfp: "output_zfp_"+basename, 
-        cm.reconstruct_cid_sph: "output_sph_"+basename, 
-        cm.reconstruct_cid_cnn: "output_cnn_"+basename, 
-        cm.reconstruct_cid_gmm: "output_gmm_"+basename, 
-        cm.reconstruct_cid_dwt: "output_dwt_"+basename, 
-        cm.reconstruct_cid_dct: "output_dct_"+basename, 
-        cm.reconstruct_cid_pca: "output_pca_"+basename 
-        # cm.reconstruct_cid_oct: "output_oct_"+basename 
-    }
-
-    for method,output_file_name in methods.items():
-        reconstruct_vdfs_mpi(file, sparsity, method,output_file_name)
