@@ -45,9 +45,10 @@ def main():
     model = DDP(model)
 
     batch_size =128
-    epochs = 300000
-    workers =4
-    cids = np.arange(1, 2300)
+    epochs = 100
+    workers = 4
+    f = pt.vlsvfile.VlsvReader(filename)
+    cids=f.read(mesh="SpatialGrid",name="CellID", tag="VARIABLE")
     VDF_Data = Lazy_Vlasiator_DataSet(cids,filename,device,box=25)
     # train_sampler = DistributedSampler(VDF_Data, rank=rank,device_ids=[rank])
     train_sampler = DistributedSampler(VDF_Data)
