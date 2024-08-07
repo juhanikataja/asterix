@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 
 filename = sys.argv[1] 
 model_checkpoint = sys.argv[2]  
+sparsity = float(sys.argv[3]) 
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -23,11 +24,22 @@ model_args = {
     "epsilon": 1e-5,
 }
 model = VQVAE(**model_args).to(device)
-state_dict = torch.load(model_checkpoint)
+ckpt=torch.load(model_checkpoint)
+new_ckpt = {}
+for k, v in ckpt.items():
+    new_ckpt[k.replace('module.', '', 1)] = v
+model.load_state_dict(new_ckpt)
 model.eval()
 
-cids = np.arange(1, 30)  
-VDF_Data = Vlasiator_DataSet(cids, filename, device)
+
+f = pt.vlsvfile.VlsvReader(filename)
+size = f.get_velocity_mesh_size()
+WID = f.get_WID()
+box=int(WID*size[0])
+cids=f.read(mesh="SpatialGrid",name="CellID", tag="VARIABLE") 
+print(cids.shape)
+VDF_Data = Lazy_Vlasiator_DataSet(cids,filename,device,box,sparsity)
+# VDF_Data = Vlasiator_DataSet(cids, filename, device)
 inference_loader = DataLoader(
     dataset=VDF_Data,
     batch_size=1,  

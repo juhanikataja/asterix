@@ -1,3 +1,6 @@
+import sys
+sys.path.append("../")
+import vdf_extract
 import pytools as pt
 import numpy as np 
 import mmap
@@ -332,218 +335,101 @@ class VQVAE(nn.Module):
             "x_recon": x_recon,
         }
 
-#Reads in a VDF from cid CellID in a 3D  32 bit numpy array
-def extract_vdf(file, cid, box=-1):
-    assert cid > 0, f"CID  {cid}!" 
-    f = pt.vlsvfile.VlsvReader(file)
-    # -- read phase space density
-    vcells = f.read_velocity_cells(cid)
-    keys = list(vcells.keys())
-    values = list(vcells.values())
+# class Vlasiator_DataSet():
+#     def __init__(self, cids,filename,device,box=25):
+#         self.cids=cids
+#         self.box=box
+#         self.device=device
+#         self.f=pt.vlsvfile.VlsvReader(filename)
 
-    # -- generate a velocity space
-    size = f.get_velocity_mesh_size()
-    vids = np.arange(4 * 4 * 4 * int(size[0]) * int(size[1]) * int(size[2]))
+#     def __len__(self):
+#         return len(self.cids)
 
-    # -- put phase space density into array
-    dist = np.zeros_like(vids, dtype=float)
-    dist.fill(np.NaN)
-    dist.fill(0)
-    dist[keys] = values
-
-    # -- sort vspace by velocity
-    v = f.get_velocity_cell_coordinates(vids)
-
-    i = np.argsort(v[:, 0], kind="stable")
-    v = v[i]
-    # vids = vids[i]
-    dist = dist[i]
-
-    j = np.argsort(v[:, 1], kind="stable")
-    v = v[j]
-    # vids = vids[j]
-    dist = dist[j]
-
-    k = np.argsort(v[:, 2], kind="stable")
-    v = v[k]
-    # vids = vids[k]
-    dist = dist[k]
-    dist = dist.reshape(4 * int(size[0]), 4 * int(size[1]), 4 * int(size[2]))
-    vdf = dist
-    i, j, k = np.unravel_index(np.nanargmax(vdf), vdf.shape)
-    len = box
-    data = vdf[(i - len) : (i + len), (j - len) : (j + len), (k - len) : (k + len)]
-    return np.array(data, dtype=np.float32)
-
-
-def extract_vdf_reader(f, cid, box=-1):
-    assert cid > 0,f"CID requested= {cid}"
-    # -- read phase space density
-    vcells = f.read_velocity_cells(cid)
-    keys = list(vcells.keys())
-    values = list(vcells.values())
-
-    # -- generate a velocity space
-    size = f.get_velocity_mesh_size()
-    vids = np.arange(4 * 4 * 4 * int(size[0]) * int(size[1]) * int(size[2]))
-
-    # -- put phase space density into array
-    dist = np.zeros_like(vids, dtype=float)
-    dist.fill(np.NaN)
-    dist.fill(0)
-    dist[keys] = values
-
-    # -- sort vspace by velocity
-    v = f.get_velocity_cell_coordinates(vids)
-
-    i = np.argsort(v[:, 0], kind="stable")
-    v = v[i]
-    # vids = vids[i]
-    dist = dist[i]
-
-    j = np.argsort(v[:, 1], kind="stable")
-    v = v[j]
-    # vids = vids[j]
-    dist = dist[j]
-
-    k = np.argsort(v[:, 2], kind="stable")
-    v = v[k]
-    # vids = vids[k]
-    dist = dist[k]
-    dist = dist.reshape(4 * int(size[0]), 4 * int(size[1]), 4 * int(size[2]))
-    vdf = dist
-    i, j, k = np.unravel_index(np.nanargmax(vdf), vdf.shape)
-    len = box
-    data = vdf[(i - len) : (i + len), (j - len) : (j + len), (k - len) : (k + len)]
-    return np.array(data, dtype=np.float32)
-
-
-def extract_vdfs(file , cids,box):
-    vdfs=[]
-    for cid in cids:
-        vdfs.append(extract_vdf(file, cid,box))
-    return np.stack(vdfs);
-
-#Hackity hack do not know hwo else to do this in python
-def create_memory_mapped_file(filename, bytes):
-    with open(filename, "wb+") as f:
-        f.seek(bytes - 1)
-        f.write(b'\x00')
-        f.flush()
-        return mmap.mmap(-1, bytes, prot=mmap.PROT_READ)
-
-#Returns a memory maped  anonymous file which contains all the vdfs
-def create_restart_mapping(filename,cids,box):
-    bytes_per_vdf=2*box*2*box*2*box*4 #(box is half-width and **4** for 4-byte float32)
-    total_size_of_mapping_bytes=bytes_per_vdf*len(cids) 
-    print(f"Creating mapped restart region with expected size {total_size_of_mapping_bytes} bytes")
-    f = pt.vlsvfile.VlsvReader(filename)
-    mmapped=mmap.mmap(-1, total_size_of_mapping_bytes)
-    mmapped.seek(0)
-    for (i,cid) in enumerate(cids):
-        vdf=extract_vdf_reader(f, cid,box)
-        print(f"Mapping {i}th VDF...")
-        index_in_mapping=i*bytes_per_vdf
-        #Here we seek instead of [] to just perform some error checking
-        mmapped.seek(index_in_mapping)
-        sz=mmapped.write(vdf.tobytes())
-        assert sz==bytes_per_vdf
-    return mmapped,bytes_per_vdf
-
-class Vlasiator_DataSet():
-    def __init__(self, cids,filename,device,box=25):
-        self.cids=cids
-        self.box=box
-        self.device=device
-        self.f=pt.vlsvfile.VlsvReader(filename)
-
-    def __len__(self):
-        return len(self.cids)
-
-    def __getitem__(self, idx):
-        vdf=extract_vdf_reader(self.f, self.cids[idx],self.box)
-        vdf_norm = (vdf - vdf.min())/(vdf.max() - vdf.min())
-        return torch.tensor(vdf_norm).unsqueeze(0).to(self.device)
+#     def __getitem__(self, idx):
+#         vdf=extract_vdf_reader(self.f, self.cids[idx],self.box)
+#         vdf_norm = (vdf - vdf.min())/(vdf.max() - vdf.min())
+#         return torch.tensor(vdf_norm).unsqueeze(0).to(self.device)
         
 
-class MMapped_Vlasiator_DataSet():
-    def __init__(self, cids,filename,device,box=25):
-        self.cids=cids
-        self.box=box
-        self.device=device
-        self.mmapped,self.bytes_per_vdf=create_restart_mapping(filename,cids,box);
-    def __len__(self):
-        return len(self.cids)
+# class MMapped_Vlasiator_DataSet():
+#     def __init__(self, cids,filename,device,box=25):
+#         self.cids=cids
+#         self.box=box
+#         self.device=device
+#         self.mmapped,self.bytes_per_vdf=create_restart_mapping(filename,cids,box);
+#     def __len__(self):
+#         return len(self.cids)
 
-    def __getitem__(self, idx):
-        index_in_mapping=self.bytes_per_vdf*idx;
-        vdf=np.frombuffer(self.mmapped[index_in_mapping:index_in_mapping+self.bytes_per_vdf],dtype=np.float32).reshape((2*self.box,2*self.box,2*self.box))
-        vdf_norm = (vdf - vdf.min())/(vdf.max() - vdf.min())
-        return torch.tensor(vdf_norm).unsqueeze(0).to(self.device)
+#     def __getitem__(self, idx):
+#         index_in_mapping=self.bytes_per_vdf*idx;
+#         vdf=np.frombuffer(self.mmapped[index_in_mapping:index_in_mapping+self.bytes_per_vdf],dtype=np.float32).reshape((2*self.box,2*self.box,2*self.box))
+#         vdf_norm = (vdf - vdf.min())/(vdf.max() - vdf.min())
+#         return torch.tensor(vdf_norm).unsqueeze(0).to(self.device)
         
-class _Lazy_Vlasiator_DataSet():
-#We can implement a queue mechanism here but for now this is open ended which means it could OOM. 
-    def __init__(self, cids,filename,device,box=25):
-        self.cids=cids
-        self.box=box
-        self.device=device
-        self.loaded_vdfs={} # hashmap over idx-index in list
-        self.vdfs=[]        # list used to cache the VDFs
-        self.f=pt.vlsvfile.VlsvReader(filename)
+# class _Lazy_Vlasiator_DataSet():
+# #We can implement a queue mechanism here but for now this is open ended which means it could OOM. 
+#     def __init__(self, cids,filename,device,box=25):
+#         self.cids=cids
+#         self.box=box
+#         self.device=device
+#         self.loaded_vdfs={} # hashmap over idx-index in list
+#         self.vdfs=[]        # list used to cache the VDFs
+#         self.f=pt.vlsvfile.VlsvReader(filename)
 
-    def __len__(self):
-        return len(self.cids)
+#     def __len__(self):
+#         return len(self.cids)
 
-    def __getitem__(self, idx):
-        idx+=1
-        if not idx in self.loaded_vdfs:
-           print(f"Reading VDF {idx}")
-           vdf=extract_vdf_reader(self.f,idx,self.box)
-           vdf = (vdf - vdf.min())/(vdf.max() - vdf.min())
-           self.vdfs.append(vdf)
-           self.loaded_vdfs[idx]=len(self.vdfs)-1;
-        print(f"Reading cached VDF {idx}")
-        index=self.loaded_vdfs[idx]
-        vdf=self.vdfs[index]
-        return torch.tensor(vdf).unsqueeze(0)
+#     def __getitem__(self, idx):
+#         idx+=1
+#         if not idx in self.loaded_vdfs:
+#            print(f"Reading VDF {idx}")
+#            vdf=extract_vdf_reader(self.f,idx,self.box)
+#            vdf = (vdf - vdf.min())/(vdf.max() - vdf.min())
+#            self.vdfs.append(vdf)
+#            self.loaded_vdfs[idx]=len(self.vdfs)-1;
+#         print(f"Reading cached VDF {idx}")
+#         index=self.loaded_vdfs[idx]
+#         vdf=self.vdfs[index]
+#         return torch.tensor(vdf).unsqueeze(0)
 
-class __Lazy_Vlasiator_DataSet:
-    def __init__(self, cids, filename, device, box=25, cache_size=256):
-        self.cids = cids
-        self.box = box
-        self.device = device
-        self.cache_size = cache_size
-        self.loaded_vdfs = OrderedDict()  
-        self.f = pt.vlsvfile.VlsvReader(filename)
+# class __Lazy_Vlasiator_DataSet:
+#     def __init__(self, cids, filename, device, box=25, cache_size=256):
+#         self.cids = cids
+#         self.box = box
+#         self.device = device
+#         self.cache_size = cache_size
+#         self.loaded_vdfs = OrderedDict()  
+#         self.f = pt.vlsvfile.VlsvReader(filename)
 
-    def __len__(self):
-        return len(self.cids)
+#     def __len__(self):
+#         return len(self.cids)
 
-    def __getitem__(self, idx):
-        idx += 1
-        if idx not in self.loaded_vdfs:
-            #print(f"Reading VDF {idx} from disk")
-            #print("-------Keys---------")
-            #print(self.loaded_vdfs.keys())
-            #print("--------------------")
-            vdf = extract_vdf_reader(self.f, idx, self.box)
-            vdf = (vdf - vdf.min()) / (vdf.max() - vdf.min())
-            #if len(self.loaded_vdfs) >= self.cache_size:
-                #self.loaded_vdfs.popitem(last=False)
-            self.loaded_vdfs[idx] = vdf
-            return torch.tensor(vdf).unsqueeze(0)
-        #print(f"Reading VDF {idx} from cache")
-        vdf = self.loaded_vdfs[idx]
-        return torch.tensor(vdf).unsqueeze(0)
+#     def __getitem__(self, idx):
+#         idx += 1
+#         if idx not in self.loaded_vdfs:
+#             #print(f"Reading VDF {idx} from disk")
+#             #print("-------Keys---------")
+#             #print(self.loaded_vdfs.keys())
+#             #print("--------------------")
+#             vdf = extract_vdf_reader(self.f, idx, self.box)
+#             vdf = (vdf - vdf.min()) / (vdf.max() - vdf.min())
+#             #if len(self.loaded_vdfs) >= self.cache_size:
+#                 #self.loaded_vdfs.popitem(last=False)
+#             self.loaded_vdfs[idx] = vdf
+#             return torch.tensor(vdf).unsqueeze(0)
+#         #print(f"Reading VDF {idx} from cache")
+#         vdf = self.loaded_vdfs[idx]
+#         return torch.tensor(vdf).unsqueeze(0)
 
 class Lazy_Vlasiator_DataSet:
-    def __init__(self, cids, filename, device, box=25, cache_size=256,max_mem_gig=32):
+    def __init__(self, cids, filename, device,box,sparsity, cache_size=256,max_mem_gig=32):
         super().__init__()
         self.cids = cids
         self.box = box
+        self.sparsity=sparsity
         self.f = pt.vlsvfile.VlsvReader(filename)
         dataset_len = len(cids) 
-        data_dims = (2*box,2*box,2*box) 
+        data_dims = (box,box,box) 
 
         # initialize the cache
         self.cache = SharedCache(
@@ -560,7 +446,8 @@ class Lazy_Vlasiator_DataSet:
         x = self.cache.get_slot(idx)
         #Lazy adds to cache
         if x is None:
-            vdf = extract_vdf_reader(self.f, idx+1, self.box)
+            _,vdf,_ = vdf_extract.extract(self.f, idx+1, self.sparsity,restrict_box=False)
+            vdf=np.array(vdf,dtype=np.float32)
             vdf = (vdf - vdf.min()) / (vdf.max() - vdf.min())
             x = torch.tensor(vdf)
             self.cache.set_slot(idx, x) 

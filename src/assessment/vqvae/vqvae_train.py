@@ -25,6 +25,7 @@ def main():
     torch.cuda.set_device(rank)
 
     filename=sys.argv[1]
+    sparsity=float(sys.argv[2])
     device ='cuda'
 
     # Initialize model
@@ -48,8 +49,11 @@ def main():
     epochs = 100
     workers = 4
     f = pt.vlsvfile.VlsvReader(filename)
+    size = f.get_velocity_mesh_size()
+    WID = f.get_WID()
+    box=int(WID*size[0])
     cids=f.read(mesh="SpatialGrid",name="CellID", tag="VARIABLE")
-    VDF_Data = Lazy_Vlasiator_DataSet(cids,filename,device,box=25)
+    VDF_Data = Lazy_Vlasiator_DataSet(cids,filename,device,box,sparsity)
     # train_sampler = DistributedSampler(VDF_Data, rank=rank,device_ids=[rank])
     train_sampler = DistributedSampler(VDF_Data)
     train_loader = DataLoader(
