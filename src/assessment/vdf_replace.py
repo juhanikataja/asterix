@@ -444,6 +444,7 @@ def main(file,sparsity):
         cm.reconstruct_cid_dct: "output_dct_"+basename, 
         cm.reconstruct_cid_pca: "output_pca_"+basename, 
         cm.reconstruct_cid_oct: "output_oct_"+basename, 
+        cm.reconstruct_cid_vqvae: "output_vqvae_"+basename
     }
 
     for method,output_file_name in methods.items():

@@ -365,3 +365,52 @@ def reconstruct_cid_dct(f, cid,sparsity):
     ] = reconstructed_vdf
     sparsify(final_vdf,sparsity)
     return cid, np.array(final_vdf, dtype=np.float32)
+
+def reconstruct_cid_vqvae(f, cid,sparsity):
+    import torch
+    import torch.nn as nn
+    import torch.optim as optim
+
+    import vqvae.vqvae_tools as vq
+    model_checkpoint='state.ptch'
+    tolerance = 1e-13
+    max_indexes, vdf,len = vdf_extract.extract(f, cid,sparsity,restrict_box=False)
+    vdf[vdf<sparsity]=sparsity
+    vdf = np.log10(vdf)
+    nx, ny, nz = np.shape(vdf)
+    assert nx == ny == nz
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    use_ema = True
+    model_args = {
+        "in_channels": 1,
+        "num_hiddens": 128,
+        "num_downsampling_layers": 2,
+        "num_residual_layers": 2,
+        "num_residual_hiddens": 32,
+        "embedding_dim": 64,
+        "num_embeddings": 512,
+        "use_ema": use_ema,
+        "decay": 0.99,
+        "epsilon": 1e-5,
+    }
+    model = vq.VQVAE(**model_args).to(device)
+    ckpt=torch.load(model_checkpoint)
+    new_ckpt = {}
+    for k, v in ckpt.items():
+        new_ckpt[k.replace('module.', '', 1)] = v
+    model.load_state_dict(new_ckpt)
+    model.eval() 
+    with torch.no_grad():
+        vdf=np.array(vdf,dtype=np.float32)
+        input = torch.from_numpy(vdf).unsqueeze(0).unsqueeze(0).to(device)
+        out = model(input)
+        reconstructed_vdf = out["x_recon"].cpu().numpy().squeeze()
+    reconstructed_vdf = 10 ** reconstructed_vdf
+    reconstructed_vdf=np.array(reconstructed_vdf,dtype=np.double)
+    final_vdf=reconstructed_vdf
+    sparsify(final_vdf,sparsity)
+    return cid, np.array(final_vdf, dtype=np.float32)
+
+
