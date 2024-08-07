@@ -151,7 +151,7 @@ fn compress_vdf(
     epochs: usize,
     hidden_layers: Vec<usize>,
     size: usize,
-) -> Vec<f64> {
+) -> (Vec<f64>, usize) {
     let (vspace, density, _harmonics) = vdf_fourier_features(&vdf, fourier_order, size);
     let mut net = Network::<f64>::new(
         vspace.ncols(),
@@ -163,7 +163,6 @@ fn compress_vdf(
     );
     net.randomize_he();
     //Train
-    let before = Instant::now();
     let mut epoch = 0;
     loop {
         let cost = net.train_minibatch(2.5e-5.into(), epoch, 1);
@@ -178,18 +177,9 @@ fn compress_vdf(
         epoch += 1;
     }
 
-    let t_spent = before.elapsed();
     let reconstructed = reconstruct_vdf(&mut net, &vspace);
-    let vdf_size = vdf.len() * std::mem::size_of::<f64>();
-    let net_size = net.calculate_total_bytes();
-    let compression_ratio = vdf_size as f32 / net_size as f32;
-    let _bytes = net.get_network_state();
-    println!(
-        "Done in {:.2} s.  Compression ratio = {:.2}x .",
-        t_spent.as_secs_f32(),
-        compression_ratio
-    );
-    reconstructed
+    let bytes_used = net.calculate_total_bytes();
+    (reconstructed, bytes_used)
 }
 
 //~ ******************* MLP COMPRESSION *************************************//
@@ -489,7 +479,7 @@ fn compress_mlp(
     hidden_layers: Vec<usize>,
     size: usize,
     sparse: f64,
-) -> PyResult<Vec<f64>> {
+) -> PyResult<(Vec<f64>, usize)> {
     let mut vdf = match read_vdf_from_file(&vdf_file, size) {
         Ok(v) => v,
         Err(err) => {
@@ -499,11 +489,12 @@ fn compress_mlp(
     };
     scale_vdf(&mut vdf, sparse);
     let norm = normalize_vdf(&mut vdf);
-    let mut reconstructed = compress_vdf(&vdf, fourier_order, epochs, hidden_layers, size);
+    let (mut reconstructed, bytes_used) =
+        compress_vdf(&vdf, fourier_order, epochs, hidden_layers, size);
     unnormalize_vdf(&mut reconstructed, norm.0, norm.1);
     unscale_vdf(&mut reconstructed);
     sparsify(&mut reconstructed, sparse);
-    Ok(reconstructed)
+    Ok((reconstructed, bytes_used))
 }
 
 #[pyfunction]
@@ -514,14 +505,15 @@ fn compress_mlp_from_vec(
     hidden_layers: Vec<usize>,
     size: usize,
     sparse: f64,
-) -> PyResult<Vec<f64>> {
+) -> PyResult<(Vec<f64>, usize)> {
     scale_vdf(&mut vdf, sparse);
     let norm = normalize_vdf(&mut vdf);
-    let mut reconstructed = compress_vdf(&vdf, fourier_order, epochs, hidden_layers, size);
+    let (mut reconstructed, bytes_used) =
+        compress_vdf(&vdf, fourier_order, epochs, hidden_layers, size);
     unnormalize_vdf(&mut reconstructed, norm.0, norm.1);
     unscale_vdf(&mut reconstructed);
     sparsify(&mut reconstructed, sparse);
-    Ok(reconstructed)
+    Ok((reconstructed, bytes_used))
 }
 
 #[pyfunction]
