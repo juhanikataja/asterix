@@ -74,7 +74,7 @@ def extract(f, cid,sparsity=1e-16,restrict_box=True):
     if (not restrict_box):
         return bulk_v_loc,np.array(vdf, dtype=np.double),len
     data = vdf[(bulk_v_loc[0] - len) : (bulk_v_loc[0] + len), (bulk_v_loc[1] - len) : (bulk_v_loc[1] + len), (bulk_v_loc[2] - len) : (bulk_v_loc[2] + len)]
-    print(f"Extracted VDF shape = {np.shape(data)}")
+    # print(f"Extracted VDF shape = {np.shape(data)}")
     return bulk_v_loc,np.array(data, dtype=np.double),len
 
 

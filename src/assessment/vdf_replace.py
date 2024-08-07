@@ -307,7 +307,7 @@ def reconstruct_vdf(f, cid,sparsity ,reconstruction_method):
     reconstruction_method: function that performs the reconstruction
     """
     print(f"Extracting CellID {cid}")
-    _, reconstructed = reconstruction_method(f, cid,sparsity)
+    _, reconstructed,cm_ratio = reconstruction_method(f, cid,sparsity)
     extents = f.get_velocity_mesh_extent()
     size = f.get_velocity_mesh_size()
     dv = f.get_velocity_mesh_dv()
@@ -329,7 +329,7 @@ def reconstruct_vdf(f, cid,sparsity ,reconstruction_method):
                     localid = bz * WID**2 + by * WID + bx
                     block_data[blockid, localid] = reconstructed[rz + bz, ry + by, rx + bx]
 
-    return blocks, block_data
+    return blocks, block_data , cm_ratio
 
 
 def reconstruct_vdf_debug(f, cid,sparsity ,reconstruction_method):
@@ -343,7 +343,7 @@ def reconstruct_vdf_debug(f, cid,sparsity ,reconstruction_method):
     reconstruction_method: function that performs the reconstruction
     """
     print(f"Extracting CellID {cid}")
-    _, reconstructed = reconstruction_method(f, cid,sparsity)
+    _, reconstructed,cm_ratio = reconstruction_method(f, cid,sparsity)
     _, original_vdf,_ = vdf_extract.extract(f, cid,sparsity,False)
     print(reconstructed.shape)
     print(original_vdf.shape)
@@ -370,7 +370,7 @@ def reconstruct_vdf_debug(f, cid,sparsity ,reconstruction_method):
                     localid = bz * WID**2 + by * WID + bx
                     block_data[blockid, localid] = reconstructed[rz + bz, ry + by, rx + bx]
 
-    return blocks, block_data
+    return blocks, block_data,cm_ratio
 
 def reconstruct_vdfs_mpi(filename, sparsity, reconstruction_method, output_file_name):
     """
@@ -403,20 +403,26 @@ def reconstruct_vdfs_mpi(filename, sparsity, reconstruction_method, output_file_
     local_reconstructed_cids = []
 
     cnt = 0
+    cm_ratio_accum=0.0;
     for cid in local_cids:
-        a, b = reconstruct_vdf(f, cid,sparsity, reconstruction_method)
-        # a, b = reconstruct_vdf_debug(f, cid,sparsity, reconstruction_method)
+        a, b , cm_ratio = reconstruct_vdf(f, cid,sparsity, reconstruction_method)
+        # a, b ,cm_ratio= reconstruct_vdf_debug(f, cid,sparsity, reconstruction_method)
         local_reconstructed_cids.append(cid)
         local_blocks.append(a)
         local_block_data.append(b)
+        cm_ratio_accum+=cm_ratio
         cnt += 1
         # if cnt >= 1:
           # break
 
+    #Reduce compression ratio 
+    compression_ratio_sum = world_comm.reduce(cm_ratio_accum, op=MPI.SUM, root=0)
     world_comm.barrier()
     global_reconstructed_cids = world_comm.gather(local_reconstructed_cids, root=0)
     if (my_rank==0):
         output_file = clone_file(f, output_file_name)
+        realized_compression=compression_ratio_sum/num_cids
+        print(f"{reconstruction_method.__name__} {realized_compression = :.3f}x ")
 
     world_comm.barrier()
     add_reconstructed_velocity_space_mpi(

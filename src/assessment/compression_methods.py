@@ -12,11 +12,12 @@ import mlp_compress
 import tools
 import pytools
 
+VDF_TYPE_SIZE=4
+
 def sparsify(vdf,sparsity):
     vdf[vdf<sparsity]=0.0
     return
     
-
 # MLP with fourier features
 def reconstruct_cid_fourier_mlp(f, cid,sparsity):
     order = 48
@@ -25,12 +26,9 @@ def reconstruct_cid_fourier_mlp(f, cid,sparsity):
     max_indexes, vdf,len = vdf_extract.extract(f, cid,sparsity)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
-    reconstructed_vdf = np.reshape(
-        mlp_compress.compress_mlp_from_vec(
-            vdf.flatten(), order, epochs,np.array(hidden_layers,dtype=np.uint64) , nx, sparsity
-        ),
-        (nx, ny, nz),
-    )
+    reconstructed_vdf,bytes_used =mlp_compress.compress_mlp_from_vec(
+                 vdf.flatten(), order, epochs,np.array(hidden_layers,dtype=np.uint64) , nx, sparsity) 
+    reconstructed_vdf = np.reshape(reconstructed_vdf,(nx, ny, nz))
     mesh = f.get_velocity_mesh_size()
     final_vdf = np.zeros((int(4 * mesh[0]), int(4 * mesh[1]), int(4 * mesh[2])))
     final_vdf[
@@ -39,7 +37,10 @@ def reconstruct_cid_fourier_mlp(f, cid,sparsity):
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
     sparsify(final_vdf,sparsity)
-    return cid, np.array(final_vdf, dtype=np.float32)
+    original_vdf_size=vdf.size*VDF_TYPE_SIZE
+    final_vdf_size=bytes_used
+    cm_ratio=original_vdf_size/final_vdf_size
+    return cid, np.array(final_vdf, dtype=np.float32),cm_ratio
 
 # MLP
 def reconstruct_cid_mlp(f, cid,sparsity):
@@ -49,12 +50,9 @@ def reconstruct_cid_mlp(f, cid,sparsity):
     max_indexes, vdf,len = vdf_extract.extract(f, cid,sparsity)
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
-    reconstructed_vdf = np.reshape(
-        mlp_compress.compress_mlp_from_vec(
-            vdf.flatten(), order, epochs, np.array(hidden_layers,dtype=np.uint64) , nx, sparsity
-        ),
-        (nx, ny, nz),
-    )
+    reconstructed_vdf,bytes_used =mlp_compress.compress_mlp_from_vec(
+                 vdf.flatten(), order, epochs,np.array(hidden_layers,dtype=np.uint64) , nx, sparsity) 
+    reconstructed_vdf = np.reshape(reconstructed_vdf,(nx, ny, nz))
     mesh = f.get_velocity_mesh_size()
     final_vdf = np.zeros((int(4 * mesh[0]), int(4 * mesh[1]), int(4 * mesh[2])))
     final_vdf[
@@ -63,7 +61,10 @@ def reconstruct_cid_mlp(f, cid,sparsity):
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
     sparsify(final_vdf,sparsity)
-    return cid, np.array(final_vdf, dtype=np.float32)
+    original_vdf_size=vdf.size*VDF_TYPE_SIZE
+    final_vdf_size=bytes_used
+    cm_ratio=original_vdf_size/final_vdf_size
+    return cid, np.array(final_vdf, dtype=np.float32),cm_ratio
 
 # ZFP
 def reconstruct_cid_zfp(f, cid,sparsity):
@@ -81,7 +82,10 @@ def reconstruct_cid_zfp(f, cid,sparsity):
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
     sparsify(final_vdf,sparsity)
-    return cid, np.array(final_vdf, dtype=np.float32)
+    original_vdf_size=vdf.size*VDF_TYPE_SIZE
+    final_vdf_size=compressed_vdf.size*VDF_TYPE_SIZE
+    cm_ratio=original_vdf_size/final_vdf_size
+    return cid, np.array(final_vdf, dtype=np.float32), cm_ratio
 
 # Spherical Harmonics
 def reconstruct_cid_sph(f, cid,sparsity):
@@ -100,7 +104,7 @@ def reconstruct_cid_sph(f, cid,sparsity):
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
     sparsify(final_vdf,sparsity)
-    return cid, np.array(final_vdf, dtype=np.float32)
+    return cid, np.array(final_vdf, dtype=np.float32),1
 
 
 # Octree
@@ -123,7 +127,7 @@ def reconstruct_cid_oct(f, cid,sparsity):
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
     sparsify(final_vdf,sparsity)
-    return cid, np.array(final_vdf, dtype=np.float32)
+    return cid, np.array(final_vdf, dtype=np.float32),1
 
 
 # PCA
@@ -157,7 +161,7 @@ def reconstruct_cid_pca(f, cid,sparsity):
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
     sparsify(final_vdf,sparsity)
-    return cid, np.array(final_vdf, dtype=np.float32)
+    return cid, np.array(final_vdf, dtype=np.float32),1
 
 
 #CNN
@@ -234,7 +238,7 @@ def reconstruct_cid_cnn(f, cid,sparsity):
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
     sparsify(final_vdf,sparsity)
-    return cid, np.array(final_vdf, dtype=np.float32)
+    return cid, np.array(final_vdf, dtype=np.float32),1
 
 
 # GMM
@@ -259,7 +263,7 @@ def reconstruct_cid_gmm(f, cid,sparsity):
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
     sparsify(final_vdf,sparsity)
-    return cid, np.array(final_vdf, dtype=np.float32)
+    return cid, np.array(final_vdf, dtype=np.float32),1
 
 
 # DWT
@@ -312,7 +316,7 @@ def reconstruct_cid_dwt(f, cid,sparsity):
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
     sparsify(final_vdf,sparsity)
-    return cid, np.array(final_vdf, dtype=np.float32)
+    return cid, np.array(final_vdf, dtype=np.float32),1
 
 
 # DCT
@@ -364,7 +368,7 @@ def reconstruct_cid_dct(f, cid,sparsity):
         max_indexes[2] - len : max_indexes[2] + len,
     ] = reconstructed_vdf
     sparsify(final_vdf,sparsity)
-    return cid, np.array(final_vdf, dtype=np.float32)
+    return cid, np.array(final_vdf, dtype=np.float32),1
 
 def reconstruct_cid_vqvae(f, cid,sparsity):
     import torch
@@ -372,11 +376,14 @@ def reconstruct_cid_vqvae(f, cid,sparsity):
     import torch.optim as optim
 
     import vqvae.vqvae_tools as vq
-    model_checkpoint='state.ptch'
+    model_checkpoint='/home/kstppd/Desktop/vq_files/model_state_30.ptch'
     tolerance = 1e-13
     max_indexes, vdf,len = vdf_extract.extract(f, cid,sparsity,restrict_box=False)
     vdf[vdf<sparsity]=sparsity
     vdf = np.log10(vdf)
+    vdf_max_val=vdf.max();
+    vdf_min_val=vdf.min();
+    vdf = (vdf - vdf.min()) / (vdf.max() - vdf.min())
     nx, ny, nz = np.shape(vdf)
     assert nx == ny == nz
 
@@ -407,10 +414,11 @@ def reconstruct_cid_vqvae(f, cid,sparsity):
         input = torch.from_numpy(vdf).unsqueeze(0).unsqueeze(0).to(device)
         out = model(input)
         reconstructed_vdf = out["x_recon"].cpu().numpy().squeeze()
+    reconstructed_vdf=reconstructed_vdf*(vdf_max_val - vdf_min_val) + vdf_min_val
     reconstructed_vdf = 10 ** reconstructed_vdf
     reconstructed_vdf=np.array(reconstructed_vdf,dtype=np.double)
     final_vdf=reconstructed_vdf
     sparsify(final_vdf,sparsity)
-    return cid, np.array(final_vdf, dtype=np.float32)
+    return cid, np.array(final_vdf, dtype=np.float32),1
 
 
