@@ -18,7 +18,7 @@ using SpecialPolynomials
 using StaticArrays: SVector
 @variables x y z
 
-FloatType=Float64
+FloatType=Float32
 DEBUG=false
 polyord = 2
 
@@ -34,7 +34,7 @@ end
 
 #bases = makebases(Rational{Int64},polyord)
 basesf = makebases(FloatType,polyord)
-#basesf=cosbases(polyord)
+# basesf=cosbases(polyord)
 
 basislen = length(basesf)
 
@@ -176,6 +176,37 @@ function approx(solu::Cell{T,3,S,M}, kuva)  where {T,S,M}
   A*h,b*h
 end
 
+function improve_residual!(solu::Cell{T,3,K,M}, A, b, phiwrk, residual) where {T,K,M}
+  e = one(FloatType)
+  center = FloatType(0.5)
+
+  c = A\b
+  span, hs = getdims(solu,residual)
+  h = prod(hs)
+
+  bias = first.(span) .- 1
+  scale = e ./ length.(span) 
+  for k in span[3]
+    rk = k-bias[3]
+    z = 2*scale[3]*(k-center-bias[3]) - e
+
+    for n in span[2]
+      rn = n-bias[2]
+      y = 2*scale[2]* (n - center -bias[2]) - e
+
+      for m in span[1]
+        rm = m-bias[1]
+        x = 2*scale[1] * (m - center - bias[1]) - e
+        phifun3!(x,y,z, phiwrk)
+
+        residual[m,n,k] = residual[m,n,k] - c'*phiwrk
+      end
+    end
+  end
+  nothing
+
+end
+
 function calcerror!(solu::Cell{T,3,K,M}, A, b, phiwrk, kuva, reconstr; alpha=1.0, beta=1.0, nu=4) where {T,K,M}
   e = one(FloatType)
   center = FloatType(0.5)
@@ -188,6 +219,9 @@ function calcerror!(solu::Cell{T,3,K,M}, A, b, phiwrk, kuva, reconstr; alpha=1.0
   scale = e ./ length.(span) 
   err = zero(FloatType)
   hsq = sqrt(h)
+
+  kuva_scale = zero(FloatType)
+  localmax = zero(FloatType)
 
   # Threads.@threads 
   for k in span[3]
@@ -209,18 +243,23 @@ function calcerror!(solu::Cell{T,3,K,M}, A, b, phiwrk, kuva, reconstr; alpha=1.0
 
         err = err + alpha*h*(cterm^nu)
 
+        localmax = maximum((localmax, abs(cterm)))
+
         # Do backward diff since the data should exist, skip boundary planes rk, rn, or rm = 0
         if rk>1 err = err + beta * hsq * ((cterm-kuva[m,n,k-1]+reconstr[rm,rn,rk-1])^nu) end
         if rn>1 err = err + beta * hsq * ((cterm-kuva[m,n-1,k]+reconstr[rm,rn-1,rk])^nu) end
         if rm>1 err = err + beta * hsq * ((cterm-kuva[m-1,n,k]+reconstr[rm-1,rn,rk])^nu) end
 
+        # kuva_scale = kuva_scale + h*(abs(kuva[m,n,k])^nu)
+        kuva_scale = maximum((abs(kuva_scale), abs(kuva[m,n,k])))
+
       end
     end
   end
 
-  err = err
+  err = err # / (kuva_scale^(1.0/nu))
 
-  FloatType(err) 
+  FloatType(err), FloatType(kuva_scale), FloatType(localmax)
 end
 
 function calcerror(solu::Cell{T,3,K,M}, A, b, kuva;alpha=1.0, beta=1000.0, nu=4) where {T,K,M}
@@ -301,7 +340,6 @@ end
 
 function approx_and_recon(solu,kuva; alpha=1.0, beta=1.0, nu=4)
   A, b = approx(solu,kuva)
-  
   reconstr, err = calcerror(solu, A, b, kuva; alpha=alpha, beta=beta, nu=nu)
 end
 
@@ -369,8 +407,91 @@ function approx_new!(solu::Cell{T,3,S,M}, kuva, A, b, phiwrk) where {T,S,M}
     nothing
 end
 
+mutable struct Leaf_t
+  err::FloatType
+  c::Vector{FloatType}
+  act::Bool
+end
 
-function compress(img; maxiter=100, nu=4, tol=1e-4, alpha=1.0, beta=1.0, verbose=True)
+function compress_conservative(img; maxiter=100, tol=1e-3, verbose=true, errtype="ltwo")
+
+  bdim = size(PolyBases.basesf,1)
+  A = zeros(FloatType, bdim, bdim)
+  b = zeros(FloatType, bdim)
+  phiwrk = similar(b)
+
+  L = round(bdim^(1/3))|>Int64
+  spans = size(img)
+  spanranges = [1:spans[i] for i in 1:3]
+  k = ceil(log2(maximum(spans) ./ L))
+  W = (PolyBases.polyord+1)*2^k 
+
+  cell = Cell( SVector(0., 0., 0.), SVector(1., 1., 1.), Leaf_t(0.0, zeros(size(b)), false) )
+  
+  shift = minimum(img[:])
+  println("shift: $(shift)")
+  img = Array{FloatType}(img .- shift)
+
+  scale = maximum(img[:])
+  println("scale: $(scale)")
+  img = Array{FloatType}(img ./ scale)
+
+  pad_span = getdims_new(cell, W)
+  padimg = PaddedView(zero(img[1]), img, (pad_span[1], pad_span[2], pad_span[3]))
+
+  span, _ = getdims(cell,padimg)
+  residual=zeros(span...)
+  residual[:,:,:] = padimg[:,:,:]
+
+  for iter in 1:maxiter 
+    # maxres, Ires = findmax(abs.(residual))# ./ floorpadimg))
+    maxres = zero(FloatType)
+
+    for leaf in allleaves(cell)
+      ldims, h = getdims(leaf, padimg)
+      if errtype == "ltwo"
+        err =  (prod(h) *sum(abs.(residual[ldims...]).^8)).^(1/8)
+      else
+        err = maximum(residual[ldims...][:] .|> abs)
+      end
+      leaf.data = Leaf_t(err, leaf.data.c, leaf.data.act)
+      # println(leaf.data.err)
+      maxres = maximum((leaf.data.err, maxres))
+      # println("at first: $(leaf.data.err)")
+    end
+
+    if maxres < tol 
+      break
+    end
+
+    if verbose println("$(iter)\t: maxres = $(maxres)") end
+
+    for leaf in allleaves(cell)
+
+      # ldims = getdims_new(leaf, W)
+      leaf.data.act = false
+      # println("after: $(leaf.data.err)")
+
+      # if !((Ires[1] in ldims[1]) & (Ires[2] in ldims[2]) & (Ires[3] in ldims[3])) continue end
+      if !(leaf.data.err == maxres) continue end
+
+      approx!(leaf, residual, A, b, phiwrk)
+      improve_residual!(leaf, A, b, phiwrk, residual)
+      split!(leaf)
+      leaf.data = Leaf_t(leaf.data.err, A\b, true)
+    end
+  end
+
+  let active_cells = filter(x->x.data.act, collect(allcells(cell)))
+    orig_dense_size = prod(spanranges .|> x->length(x))
+    compression_ratio =  4*orig_dense_size/(4*length(active_cells)*length(cell.data.c) + 3*length(active_cells))
+    residual[spanranges...] .* scale, scale.*padimg[spanranges...] .+ shift, active_cells, compression_ratio
+  end
+
+
+end
+
+function compress(img; maxiter=100, nu=4, tol=1e-4, alpha=1.0, beta=1.0, verbose=true)
   bdim = size(PolyBases.basesf,1)
   A = zeros(FloatType, bdim, bdim)
   b = zeros(FloatType, bdim)
@@ -392,6 +513,7 @@ function compress(img; maxiter=100, nu=4, tol=1e-4, alpha=1.0, beta=1.0, verbose
   reconstr=zeros(span...)
 
   initial_error = 0.0
+
   for iter in 1:maxiter
     tot_err = zero(FloatType)
     maxerr = zero(FloatType)
@@ -399,20 +521,26 @@ function compress(img; maxiter=100, nu=4, tol=1e-4, alpha=1.0, beta=1.0, verbose
       approx!(leaf, padimg, A, b, phiwrk)
       span, _ = getdims(leaf, padimg)
       
-      err = calcerror!(leaf, A, b, phiwrk, padimg, @view reconstr[span...]; alpha=alpha, beta=beta, nu=nu)
-      leaf.data = err
+      err, kuva_scale, localmax = calcerror!(leaf, A, b, phiwrk, padimg, @view reconstr[span...]; alpha=alpha, beta=beta, nu=nu)
+      # leaf.data = err
+      localmax = localmax/(kuva_scale+FloatType(tol))
+      leaf.data = localmax
       tot_err = tot_err + err
-      maxerr = if err > maxerr err else maxerr end
+      
+
+      # maxerr = if err > maxerr err else maxerr end
+      maxerr = maximum((localmax, maxerr)) # if localmax > maxerr localmax else maxerr end
 
       if span[1] == L leaf.data = -1.0 end
 
     end
-    if iter == 1 initial_error = tot_err end
+    if iter == 1 initial_error = maxerr end
 
     if verbose
-      print((tot_err/initial_error).^(1. /nu))
+      print((maxerr/initial_error))
+      # print((maxerr/initial_error).^(1. /nu))
       print("\t")
-      println(maxerr.^(1. /nu))
+      println(maxerr)
     end
 
     for leaf in allleaves(cell)
@@ -420,7 +548,8 @@ function compress(img; maxiter=100, nu=4, tol=1e-4, alpha=1.0, beta=1.0, verbose
         split!(leaf) 
       end
     end
-    if (tot_err/initial_error).^(1. /nu) < tol
+    # if (tot_err/initial_error).^(1. /nu) < tol
+    if maxerr< tol #/initial_error < tol
       break
     end
   end
@@ -510,8 +639,8 @@ function visualcompare(reconstr, img; slice=5, epsterm=1e-3)
   fig = Makie.Figure()
 
   ax, imleft = heatmap(fig[1,1], reconstr[:,:,slice], interpolate=false)
-  ax, imright=heatmap(fig[1,2], img[:,:,slice], interpolate=false)
-  ax, imrightright=heatmap(fig[1,3], (img[:,:,slice]-reconstr[:,:,slice])./(img[:,:,slice].+reconstr[:,:,slice].+epsterm), interpolate=false)
+  ax, imright = heatmap(fig[1,2], img[:,:,slice], interpolate=false)
+  ax, imrightright = heatmap(fig[1,3], (img[:,:,slice]-reconstr[:,:,slice])./(img[:,:,slice].+reconstr[:,:,slice].+epsterm), interpolate=false)
   Colorbar(fig[1,1][1,2], imleft)
   Colorbar(fig[1,2][1,2], imright)
   Colorbar(fig[1,3][1,2], imrightright)
