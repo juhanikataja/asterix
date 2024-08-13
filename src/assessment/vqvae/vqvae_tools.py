@@ -446,7 +446,8 @@ class Lazy_Vlasiator_DataSet:
         x = self.cache.get_slot(idx)
         #Lazy adds to cache
         if x is None:
-            _,vdf,_ = vdf_extract.extract(self.f, idx+1, self.sparsity,restrict_box=False)
+            _,vdf,_ = vdf_extract.extract(self.f, idx+1, self.sparsity)
+            vdf=vdf_extract.pad_array(vdf,(self.box,self.box,self.box),0.0)
             vdf=np.array(vdf,dtype=np.float32)
             vdf = (vdf - vdf.min()) / (vdf.max() - vdf.min())
             x = torch.tensor(vdf)

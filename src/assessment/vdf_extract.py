@@ -29,6 +29,17 @@ def get_vdf_bounding_box(vdf,sparse):
                   valid_indices[:, 1].max(), valid_indices[:, 2].max()]
     return bounding_box
 
+def pad_array(input,shape,val=0):
+    import numpy as np
+    assert len(input.shape) == len(shape) 
+    width=[]
+    for c,dim in enumerate(input.shape):
+        target=shape[c]
+        left = (target - dim) // 2
+        right = target - left - dim
+        width.append((left,right))
+    return np.pad(input,width,mode="constant",constant_values=val)
+        
 def extract(f, cid,sparsity=1e-16,restrict_box=True):
     import numpy as np
     assert cid > 0
