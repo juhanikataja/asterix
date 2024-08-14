@@ -14,6 +14,7 @@ if arglen == 1:
     print(" method is used to annotate outputs and will create a corresponding folder")
     print(" stride (default 1) strides over cellIDs (file layout)")
     print(" nprocs (default 1) is number of cores used via multiprocessing")
+    sys.exit(1)
 
     # khi_base = "/scratch/project_2010750/assessment/khi_small/"
 
