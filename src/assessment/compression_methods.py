@@ -117,12 +117,12 @@ def reconstruct_cid_oct(f, cid,sparsity):
     jl.Pkg.instantiate()
     jl.include("src/octree.jl")
 
-    residual, padimg, tree, compress_ratio = jl.VDFOctreeApprox.compress_conservative(vdf_3d, maxiter=1000, tol=0.025, verbose=False, errtype="ltwo")
+    residual, orig, cells, size_bytes = jl.VDFOctreeApprox.compress_tucker(vdf, tol=0.25, maxiter=30, tucker_core_dim=(3,3,3))
 
-    reco = (padimg-residual).to_numpy()
+    reco = (orig-residual).to_numpy()
 
     reconstructed_vdf=np.array(reco,dtype=np.double)
-    reconstructed_vdf= np.reshape(reconstructed_vdf,np.shape(vdf),order='C')
+    reconstructed_vdf=np.reshape(reconstructed_vdf,np.shape(vdf),order='C')
     mesh = f.get_velocity_mesh_size()
     final_vdf = np.zeros((int(4 * mesh[0]), int(4 * mesh[1]), int(4 * mesh[2])))
     final_vdf[
@@ -132,10 +132,9 @@ def reconstruct_cid_oct(f, cid,sparsity):
     ] = reconstructed_vdf
 
     original_vdf_size=vdf.size*VDF_TYPE_SIZE
-    compressed_vdf_size=(3*length(tree) + VDF_TYPE_SIZE*length(tree)*length(tree[1].data.c))
 
     sparsify(final_vdf,sparsity)
-    return cid, np.array(final_vdf, dtype=np.float32), original_vdf_size/compressed_vdf_size
+    return cid, np.array(final_vdf, dtype=np.float32), original_vdf_size/size_bytes
 
 
 # PCA
