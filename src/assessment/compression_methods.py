@@ -381,11 +381,16 @@ def reconstruct_cid_vqvae(f, cid,sparsity):
     import torch
     import torch.nn as nn
     import torch.optim as optim
-
     import vqvae.vqvae_tools as vq
-    model_checkpoint='/home/kstppd/Desktop/vq_files/model_state_30.ptch'
+    model_checkpoint='/home/kstppd/dev/asterix/model_state_70.ptch'
+    size = f.get_velocity_mesh_size()
+    WID = f.get_WID()
+    vmesh_size=size*WID
+    vmesh_size=np.array(vmesh_size,dtype=int)
+    
     tolerance = 1e-13
-    max_indexes, vdf,len = vdf_extract.extract(f, cid,sparsity,restrict_box=False)
+    bulk_v_loc, vdf,len = vdf_extract.extract(f, cid,sparsity)
+    vdf=vdf_extract.pad_array(vdf,vmesh_size,0.0)
     vdf[vdf<sparsity]=sparsity
     vdf = np.log10(vdf)
     vdf_max_val=vdf.max();
@@ -421,6 +426,10 @@ def reconstruct_cid_vqvae(f, cid,sparsity):
         input = torch.from_numpy(vdf).unsqueeze(0).unsqueeze(0).to(device)
         out = model(input)
         reconstructed_vdf = out["x_recon"].cpu().numpy().squeeze()
+        
+    origin=np.array(vmesh_size)//2
+    offset=bulk_v_loc-origin
+    reconstructed_vdf=np.roll(reconstructed_vdf,offset,(0,1,2))
     reconstructed_vdf=reconstructed_vdf*(vdf_max_val - vdf_min_val) + vdf_min_val
     reconstructed_vdf = 10 ** reconstructed_vdf
     reconstructed_vdf=np.array(reconstructed_vdf,dtype=np.double)
