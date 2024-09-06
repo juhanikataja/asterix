@@ -1,5 +1,7 @@
 [deps]
+Clustering = "aaaa29a8-35af-508c-8bc3-b662a17a0fe5"
 CodecZlib = "944b1d66-785c-5afd-91f1-9de20f533193"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 PaddedViews = "5432bcbf-9aad-5242-b902-cca2824c8663"
 PythonCall = "6099a3de-0909-46bc-b1f4-468b9a2dfc0d"
 RegionTrees = "dee08c22-ab7f-5625-9660-a9af2021b33f"

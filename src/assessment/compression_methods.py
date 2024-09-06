@@ -117,7 +117,8 @@ def reconstruct_cid_oct(f, cid,sparsity):
     jl.Pkg.instantiate()
     jl.include("src/octree.jl")
 
-    residual, orig, cells, size_bytes = jl.VDFOctreeApprox.compress_tucker(vdf, tol=0.25, maxiter=30, tucker_core_dim=(3,3,3))
+    # tol around 0.35 and nbits~9 looks promising
+    residual, orig, cells, size_bytes = jl.VDFOctreeApprox.compress_tucker(vdf, tol=0.4, maxiter=30, tucker_core_dim=(2,2,2), nbits=9)
 
     reco = (orig-residual).to_numpy()
 

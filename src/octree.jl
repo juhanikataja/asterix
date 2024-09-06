@@ -12,6 +12,9 @@ using PaddedViews
 
 using TensorDecompositions
 
+using Distributions
+using Clustering
+
 FloatType=Float32
 
 module PolyBases
@@ -548,7 +551,7 @@ function pad_and_scale(img; bdim=PolyBases.bdim, simple=false)
 
 end
 
-function compress_tucker(img; maxiter=100, tol=1e-3, tucker_core_dim=(1,1,1), verbose=true)
+function compress_tucker(img; maxiter=100, tol=1e-3, tucker_core_dim=(1,1,1), verbose=true, nbits=10)
 
   residual, shift, scale, spanranges = pad_and_scale(img|>copy ; bdim=prod(tucker_core_dim), simple=false)
   padimg = copy(residual)
@@ -583,10 +586,11 @@ function compress_tucker(img; maxiter=100, tol=1e-3, tucker_core_dim=(1,1,1), ve
   sizes = mapreduce(x-> if (x.data.active) Array([1,sum(prod.(size.(x.data.D.core)))+sum(prod.(size.(x.data.D.factors)))]) else Array([0,0]) end, +, allcells(tree))
 
   active_cells = filter(x->x.data.active, collect(allcells(tree)))
-  packed = pack_cells(active_cells; quant_type=UInt16)
-  size_bytes = sum(sizeof.([packed...]))
+  packed = pack_cells(active_cells; nbits=nbits)
+  #size_bytes = sum(sizeof.([packed...]))
+  size_bytes = get_packed_size(packed)
 
-  unpacked = unpack_cells(packed...; quant_type=UInt16)
+  unpacked = unpack_cells(packed...)
   residual .= 0.0
   map(unpacked) do cell
     reconstruct!(cell, residual)
@@ -969,20 +973,131 @@ function bin2f(B)
     return [left,right-left]
 end
 
+function tobitvector(Q;nbits=8) 
+    BitVector(digits(UInt(Q), base=2, pad=nbits))[1:nbits]
+end
+
+function bv_touint(Q::BitVector, UIType)
+    acc = zero(UIType)
+    for n in axes(Q,1)
+        acc = acc + UIType(Q[n]) * UIType(2^(n-1))
+    end
+    acc
+end
+
+function asbytes(Q::BitVector)
+    [bv_touint(Q[(bn*8+1):((bn+1)*8)], UInt8) for bn in 0:(div(length(Q),8)-1)]
+end
+
+function ReLU(z)
+    if z > zero(0)
+        z
+    else
+        zero(z)
+    end
+end
+
+function quantize_clustering(X::Vector{T}, nbits::UInt, K::UInt) where T
+
+    N = 2^nbits
+    kmeans_init = if K==1
+        [findmin(abs.(quantile(X,0.5) .- X))[2]]
+    else
+         [findmin(abs.(qx .- X))[2] for qx in quantile(X, range(0, 1; length=K))]
+    end
+    xclust = kmeans(X', K; init=kmeans_init, tol=1e-8, maxiter=2000)#, display=:iter)
+
+    sorted = sortperm(xclust.centers[:])
+
+    VM = map(sorted) do i
+        C = [minimum(X[xclust.assignments.==i]), maximum(X[xclust.assignments.==i])]
+        center = xclust.centers[i]
+        bdist = maximum(abs.(C .- center))
+        (center - bdist, center + bdist, bdist * 2, length(X[xclust.assignments.==i]))
+    end
+
+    beta = N / sum((y[3] * y[4] for y in VM))
+    alpha = (y[3] * y[4] for y in VM)
+    N0 = beta .* collect(alpha)
+    N_clust = UInt64.(round.(N0))
+    N_clust[N_clust.==0] .= one(UInt64)
+
+    while N > sum(N_clust)
+        errs = alpha ./ N_clust
+        _, ind = findmax(errs)
+        N_clust[ind] = N_clust[ind] + 1
+    end
+    while sum(N_clust) > N
+        errs = alpha ./ N_clust
+        _, ind = findmin((
+            if N_clust[i] == 1
+                Inf
+            else
+                errs[i]
+            end
+            for i in axes(errs, 1)))
+        N_clust[ind] = N_clust[ind] - 1
+    end
+
+
+    nq = map(X) do z
+        _, I = findmin((ReLU(VM[ind][1] - z) + ReLU(z - VM[ind][2]) for ind in axes(VM, 1)))
+        bias = sum(N_clust[1:(I-1)])
+        if N_clust[I] == 1
+            bias + 1
+        else
+            a = VM[I][1]
+            ba = VM[I][3]
+            N = N_clust[I]
+            n = bias + maximum((1, minimum((N, Int(ceil(((z - a) / ba + 1 / (2 * N)) * N))))))
+            n
+        end
+    end
+
+    R_limits = map(VM) do L
+        L[1],L[2]
+    end
+  numbits = length(nq)*nbits
+  pad = BitVector(zeros(8-numbits+((div(numbits,8))*8)))
+  vcat(tobitvector.(nq .- 1;nbits=nbits)..., pad)|>asbytes, R_limits, N_clust, nbits, length(pad)
+end
+
+function dequantize_clustering(bytes, R_limits, N_clust, nbits, n_pad)
+    Y = vcat(tobitvector.(bytes;nbits=8)...)
+    num_numbers = div(length(Y[1:(end-n_pad)]), nbits)
+
+    cs_clust = cumsum(vcat([zero(typeof(N_clust[1]))], N_clust))[1:(end-1)]
+    map(0:(num_numbers-1)) do bn
+        n = bv_touint(Y[(bn*nbits+1):(bn*nbits+nbits)],UInt64) + 1
+        I = sum(n .> cs_clust)
+        bias = cs_clust[I]
+        if N_clust[I] == 1
+            R_limits[I][1]
+        else
+            a = R_limits[I][1]
+            ba = R_limits[I][2]-R_limits[I][1]
+            N = N_clust[I]
+            nn = n-bias
+            (nn / N - 1 / (2 * N)) * ba + a
+        end
+    end
+end
+
 using CodecZlib
-function pack_cells(cells::Array; quant_type=UInt16)
+function pack_cells(cells::Array; nbits=8)
     serialized, core_dims, factor_lengths, n_leaves = serialize_leaves([cell for cell in cells])
-    X_q, sc = quantize_array(quant_type, serialized)
-    X_comp = transcode(CodecZlib.ZlibCompressor, reinterpret(UInt8, X_q) |> Vector{UInt8})
+    #X_q, sc = quantize_array(quant_type, serialized)
+    bytes, R_limits, N_clust, nbits, npad = quantize_clustering(serialized, UInt(nbits), UInt(2))
+    X_comp = transcode(CodecZlib.ZlibCompressor, reinterpret(UInt8, bytes) |> Vector{UInt8})
     cell_coords = map(cells) do cell
         cell_to_binary(cell)
     end
-(;:compressed=>X_comp, :quant_scale=>sc, :core_dims=>core_dims, :factor_lengths=>factor_lengths, :cell_coords=>cell_coords)
+(;:compressed=>X_comp, :quantize_info=>(R_limits, N_clust, nbits, npad), :core_dims=>core_dims, :factor_lengths=>factor_lengths, :cell_coords=>cell_coords)
 end
 
-function unpack_cells(compressed, quantize_scaling, core_dims, factor_lengths, cell_coords; quant_type=UInt16)
+function unpack_cells(compressed, quantize_info, core_dims, factor_lengths, cell_coords)
     X_decomp = transcode(CodecZlib.ZlibDecompressor, compressed)
-    Y = unquantize_array(Float64, reinterpret(quant_type, X_decomp) |> Vector{quant_type}, quantize_scaling)
+    Y = dequantize_clustering(X_decomp, quantize_info...)
     cores, factors = deserialize_leaves(Y, core_dims, factor_lengths,length(cell_coords))
     cells =  [ 
     begin
@@ -993,6 +1108,14 @@ function unpack_cells(compressed, quantize_scaling, core_dims, factor_lengths, c
               :active => true) )
     end for K in axes(cores,4)]
     cells
+end
+
+function get_packed_size(packed)
+  length(packed.compressed) + 
+  length(packed.cell_coords)*3 +
+  length(packed.quantize_info[1])*2*4 + length(packed.quantize_info[2])*4 + 1 + 1 +
+  3 + # core_dims
+  length(packed.factor_lengths)*2
 end
 
 end
